@@ -50,6 +50,10 @@ contract StakingContract is Pausable, Ownable {
         emit PoolCreated(_gameID, _challengeID, _userID, _toCover, _toDistribute);
     }
 
+    function deposit(uint256 _amount, bytes32 _pid) public {
+        //add the calls for the oracle here
+    }
+
     function getPool(bytes32 _pid) public view returns(PoolInfo memory) {
         return poolInfo[_pid];
     }
