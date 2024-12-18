@@ -12,6 +12,10 @@ build:
 analyze:
 	aderyn .
 
+.PHONY: test
+test:
+	forge coverage --report lcov
+
 # Install dependencies (forge and aderyn)
 .PHONY: install
 install:
