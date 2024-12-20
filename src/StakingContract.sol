@@ -32,9 +32,12 @@ contract StakingContract is Pausable, Ownable {
     mapping(string => bool) public usersRegistered;
     mapping(bytes32 => mapping(address => uint256)) public sharesByAddress;
 
-    address public devaddr;
-    uint256 public constant INITIAL_SHARES = 100000 * 1e12;
+    uint256 constant PRECISION_FACTOR = 1e12;
+    uint256 constant INITIAL_SHARES = 100000 * PRECISION_FACTOR;
 
+    address public immutable token;
+    address public devaddr;
+    address public devaddr;
     EStormOracle public oracle;
     Bolt public immutable bolt;
 
@@ -112,12 +115,9 @@ contract StakingContract is Pausable, Ownable {
             pool.totalShares = INITIAL_SHARES / 1e12;
             sharesByAddress[_pid][msg.sender] = INITIAL_SHARES / 1e12;
         } else {
+            uint256 shares = (_amount * pool.totalShares * PRECISION_FACTOR) / (pool.totalStaked * PRECISION_FACTOR);
+            console.log(shares);
             pool.totalStaked += _amount;
-            
-            uint256 shares = pool.totalShares/
-                ((1 - _amount / pool.totalStaked)) -
-                pool.totalShares;
-            
             pool.totalShares += shares;
             sharesByAddress[_pid][msg.sender] += shares;
         }
