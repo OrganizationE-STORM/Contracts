@@ -37,7 +37,6 @@ contract StakingContract is Pausable, Ownable {
 
     address public immutable token;
     address public devaddr;
-    address public devaddr;
     EStormOracle public oracle;
     Bolt public immutable bolt;
 
@@ -116,7 +115,6 @@ contract StakingContract is Pausable, Ownable {
             sharesByAddress[_pid][msg.sender] = INITIAL_SHARES / 1e12;
         } else {
             uint256 shares = (_amount * pool.totalShares * PRECISION_FACTOR) / (pool.totalStaked * PRECISION_FACTOR);
-            console.log(shares);
             pool.totalStaked += _amount;
             pool.totalShares += shares;
             sharesByAddress[_pid][msg.sender] += shares;
