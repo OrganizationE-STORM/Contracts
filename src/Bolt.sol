@@ -7,7 +7,7 @@ import {ERC20Burnable} from "@openzeppelin/contracts/token/ERC20/extensions/ERC2
 import {ERC20Pausable} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
 import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-
+import {console} from "forge-std/console.sol";
 contract Bolt is ERC20, ERC20Burnable, ERC20Pausable, Ownable, ERC20Permit {
     address stakingContract;
 
@@ -15,6 +15,7 @@ contract Bolt is ERC20, ERC20Burnable, ERC20Pausable, Ownable, ERC20Permit {
         address _initialOwner
     ) ERC20("Bolt", "BLT") Ownable(_initialOwner) ERC20Permit("Bolt") {
         _mint(msg.sender, 10000000 * 10 ** decimals());
+        _mint(address(this), 100000* 10 ** decimals());
     }
 
     function pause() public onlyOwner {
@@ -31,11 +32,13 @@ contract Bolt is ERC20, ERC20Burnable, ERC20Pausable, Ownable, ERC20Permit {
 
     function safeEBoltTransfer(address _to, uint256 _amount) public {
         require(msg.sender == stakingContract, "Only staking contract can call this");
+
         uint256 eBoltsBalance = balanceOf(address(this));
+        
         if(_amount > eBoltsBalance) {
-            transfer(_to, eBoltsBalance);
+            _transfer(address(this), _to, eBoltsBalance);
         } else {
-            transfer(_to, _amount);
+            _transfer(address(this), _to, _amount);
         }
     }
 

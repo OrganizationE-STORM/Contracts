@@ -92,9 +92,10 @@ contract StakingContract is Pausable, Ownable {
             .getPool(_pid);
         require(isActive, "Pool not active");
         PoolInfo storage pool = poolInfo[_pid];
-
+        
         if (lastRewardUpdate > pool.lastRewardUpdate) {
             pool.lastRewardUpdate = block.timestamp;
+            
             if (rewardAmount > 0) {
                 pool.totalStaked += uint256(rewardAmount);
                 safeEBoltTransfer(address(this), uint256(rewardAmount));
@@ -110,9 +111,9 @@ contract StakingContract is Pausable, Ownable {
         }
 
         if (pool.totalShares == 0) {
-            pool.totalStaked = _amount;
-            pool.totalShares = INITIAL_SHARES / 1e12;
-            sharesByAddress[_pid][msg.sender] = INITIAL_SHARES / 1e12;
+            pool.totalStaked += _amount;
+            pool.totalShares = INITIAL_SHARES / PRECISION_FACTOR;
+            sharesByAddress[_pid][msg.sender] = INITIAL_SHARES / PRECISION_FACTOR;
         } else {
             uint256 shares = (_amount * pool.totalShares * PRECISION_FACTOR) / (pool.totalStaked * PRECISION_FACTOR);
             pool.totalStaked += _amount;

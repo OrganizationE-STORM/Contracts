@@ -51,7 +51,7 @@ contract StakingContractPoolCreationTest is Test {
     }
 
     /// @notice Test that a staker can deposit tokens into a pool
-    function testStakerDeposit() public {
+    function testStakerDepositWithNoRewards() public {
         uint256 amountStaked = 500;
 
         // Transfer tokens to staker
@@ -77,6 +77,20 @@ contract StakingContractPoolCreationTest is Test {
         assertEq(poolAfterDeposit.totalStaked, amountStaked + amountStaked + 100, "Total staked mismatch after deposit");
         assertEq(staker1Shares, INITIAL_SHARES, "Staker 1 shares are wrong");
         assertEq(staker2Shares, 120000,"Staker 2 shares are wrong");
+    }
+
+    function testStakerDepositWithPositiveReward() public {
+        uint256 amountStaked = 500;
+        uint256 rewardAmount = 60;
+        bolt.transfer(STAKER1, amountStaked);
+        stakingContract.createPool(50, 50, GAME, CHALLENGE, USER_ID);
+        vm.warp(10);
+        oracle.updatePool(pid, int256(rewardAmount), true);
+        vm.prank(STAKER1);
+        stakingContract.deposit(amountStaked, pid);
+        StakingContract.PoolInfo memory poolAfterDeposit = stakingContract.getPool(pid);
+        assertEq(poolAfterDeposit.totalStaked, amountStaked + 60, "Total staked is wrong"); 
+        assertEq(bolt.balanceOf(address(stakingContract)), rewardAmount, "Balance wrong");
     }
 
     /// @notice Test that pool creation reverts if the game is invalid
