@@ -35,7 +35,6 @@ contract StakingContract is Pausable, Ownable {
     uint256 constant PRECISION_FACTOR = 1e12;
     uint256 constant INITIAL_SHARES = 100000 * PRECISION_FACTOR;
 
-    address public immutable token;
     address public devaddr;
     EStormOracle public oracle;
     Bolt public immutable bolt;
