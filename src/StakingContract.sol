@@ -30,14 +30,22 @@ contract StakingContract is Pausable, Ownable {
     mapping(bytes32 => PoolInfo) public poolInfo; // the key is obtained by concatenating the _gameID, _challengeID and the _userID
     mapping(string => bool) public gamesRegistered;
     mapping(string => bool) public usersRegistered;
-    mapping(bytes32 => mapping(address => uint256)) sharesByAddress;
+    mapping(bytes32 => mapping(address => uint256)) public sharesByAddress;
 
-    address public immutable token;
+    address public devaddr;
+    uint256 public constant INITIAL_SHARES = 100000 * 1e12;
+
     EStormOracle public oracle;
+    Bolt public immutable bolt;
 
-    constructor(address _token, EStormOracle _oracle) Ownable(_msgSender()) {
-        token = _token;
+    constructor(
+        Bolt _bolt,
+        EStormOracle _oracle,
+        address _devaddr
+    ) Ownable(_msgSender()) {
+        bolt = _bolt;
         oracle = _oracle;
+        devaddr = _devaddr;
     }
 
     function createPool(
@@ -77,37 +85,46 @@ contract StakingContract is Pausable, Ownable {
     }
 
     function deposit(uint256 _amount, bytes32 _pid) public {
+        require(_amount > 0, "Amount cannot be zero");
         (bool isActive, int256 rewardAmount, uint256 lastRewardUpdate) = oracle
             .getPool(_pid);
         require(isActive, "Pool not active");
         PoolInfo storage pool = poolInfo[_pid];
-        
-        //q: bombard this part with tests
+
         if (lastRewardUpdate > pool.lastRewardUpdate) {
             pool.lastRewardUpdate = block.timestamp;
             if (rewardAmount > 0) {
-                //TODO: Safe transfer function here
                 pool.totalStaked += uint256(rewardAmount);
-            } else {
+                safeEBoltTransfer(address(this), uint256(rewardAmount));
+            } else if (rewardAmount < 0) {
                 uint256 absRewardAmount = uint256(-rewardAmount);
                 require(
                     pool.totalStaked >= absRewardAmount,
                     "Reward exceeds total staked"
                 );
                 pool.totalStaked -= absRewardAmount;
+                safeEBoltTransfer(devaddr, absRewardAmount);
             }
         }
 
-        if(pool.totalShares == 0) {
+        if (pool.totalShares == 0) {
             pool.totalStaked = _amount;
-            pool.totalShares = 100000;
-            sharesByAddress[_pid][msg.sender] = 100000;
+            pool.totalShares = INITIAL_SHARES / 1e12;
+            sharesByAddress[_pid][msg.sender] = INITIAL_SHARES / 1e12;
         } else {
             pool.totalStaked += _amount;
-            uint256 shares = pool.totalShares / (1 - _amount / pool.totalStaked) - pool.totalShares;
+            
+            uint256 shares = pool.totalShares/
+                ((1 - _amount / pool.totalStaked)) -
+                pool.totalShares;
+            
             pool.totalShares += shares;
             sharesByAddress[_pid][msg.sender] += shares;
         }
+    }
+
+    function safeEBoltTransfer(address _to, uint256 _amount) internal {
+        bolt.safeEBoltTransfer(_to, _amount);
     }
 
     function getPool(bytes32 _pid) public view returns (PoolInfo memory) {
