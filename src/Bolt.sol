@@ -8,13 +8,12 @@ import {ERC20Pausable} from "@openzeppelin/contracts/token/ERC20/extensions/ERC2
 import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-
 contract Bolt is ERC20, ERC20Burnable, ERC20Pausable, Ownable, ERC20Permit {
-    constructor(address initialOwner)
-        ERC20("Bolt", "BLT")
-        Ownable(initialOwner)
-        ERC20Permit("Bolt")
-    {
+    address stakingContract;
+
+    constructor(
+        address _initialOwner
+    ) ERC20("Bolt", "BLT") Ownable(_initialOwner) ERC20Permit("Bolt") {
         _mint(msg.sender, 10000000 * 10 ** decimals());
     }
 
@@ -30,12 +29,27 @@ contract Bolt is ERC20, ERC20Burnable, ERC20Pausable, Ownable, ERC20Permit {
         _mint(to, amount);
     }
 
+    function safeEBoltTransfer(address _to, uint256 _amount) public {
+        require(msg.sender == stakingContract, "Only staking contract can call this");
+        uint256 eBoltsBalance = balanceOf(address(this));
+        if(_amount > eBoltsBalance) {
+            transfer(_to, eBoltsBalance);
+        } else {
+            transfer(_to, _amount);
+        }
+    }
+
+    function setStakingContract(address _addr) public onlyOwner() {
+        stakingContract = _addr;
+    }
+
     // The following functions are overrides required by Solidity.
 
-    function _update(address from, address to, uint256 value)
-        internal
-        override(ERC20, ERC20Pausable)
-    {
+    function _update(
+        address from,
+        address to,
+        uint256 value
+    ) internal override(ERC20, ERC20Pausable) {
         super._update(from, to, value);
     }
 }

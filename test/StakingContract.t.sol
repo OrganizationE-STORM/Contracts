@@ -14,6 +14,9 @@ contract StakingContractPoolCreationTest is Test {
     string constant USER_ID = "Alessio";
     address constant OWNER = 0xb4c79daB8f259C7Aee6E5b2Aa729821864227e84;
     address constant STAKER1 = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
+    address constant STAKER2 = 0x976EA74026E726554dB657fA54763abd0C3a0aa9;
+    address constant DEVADDR = 0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f;
+    uint256 public constant INITIAL_SHARES = 100000;
 
     // Test Variables
     Bolt internal bolt;
@@ -27,8 +30,10 @@ contract StakingContractPoolCreationTest is Test {
         bolt = new Bolt(OWNER);
         oracle = new EStormOracle();
         pid = keccak256(abi.encode(GAME, CHALLENGE, USER_ID));
-        stakingContract = new StakingContract(address(bolt), oracle);
+        stakingContract = new StakingContract(bolt, oracle, DEVADDR);
         stakingContract.addGame(GAME);
+        vm.prank(OWNER);
+        bolt.setStakingContract(address(stakingContract));
     }
 
     /// @notice Test that a pool is successfully created
@@ -62,12 +67,16 @@ contract StakingContractPoolCreationTest is Test {
         
         vm.prank(STAKER1);
         stakingContract.deposit(amountStaked, pid);
+        vm.prank(STAKER2);
+        stakingContract.deposit(amountStaked + 100, pid);
 
         StakingContract.PoolInfo memory poolAfterDeposit = stakingContract.getPool(pid);
+        uint256 staker1Shares = stakingContract.sharesByAddress(pid, STAKER1);
+        uint256 staker2Shares = stakingContract.sharesByAddress(pid, STAKER2);
 
-        assertEq(poolAfterDeposit.totalStaked, amountStaked, "Total staked mismatch after deposit");
-        assertEq(poolAfterDeposit.totalShares > 0, true, "Total shares should increase after deposit");
-        assertEq(poolAfterDeposit.lastRewardUpdate, block.timestamp, "Last reward update timestamp mismatch");
+        assertEq(poolAfterDeposit.totalStaked, amountStaked + amountStaked + 100, "Total staked mismatch after deposit");
+        assertEq(staker1Shares, INITIAL_SHARES, "Staker 1 shares are wrong");
+        assertEq(staker2Shares, 120000,"Staker 2 shares are wrong");
     }
 
     /// @notice Test that pool creation reverts if the game is invalid
