@@ -104,6 +104,7 @@ contract StakingContract is Pausable, Ownable {
                     pool.totalStaked >= absRewardAmount,
                     "Reward exceeds total staked"
                 );
+                // add an if statement
                 pool.totalStaked -= absRewardAmount;
                 safeEBoltTransfer(devaddr, absRewardAmount);
             }

@@ -78,7 +78,8 @@ contract StakingContractPoolCreationTest is Test {
         assertEq(staker1Shares, INITIAL_SHARES, "Staker 1 shares are wrong");
         assertEq(staker2Shares, 120000,"Staker 2 shares are wrong");
     }
-
+    
+    /// @notice Testing deposit with a rewardAmount > 0
     function testStakerDepositWithPositiveReward() public {
         uint256 amountStaked = 500;
         uint256 rewardAmount = 60;
@@ -91,6 +92,26 @@ contract StakingContractPoolCreationTest is Test {
         StakingContract.PoolInfo memory poolAfterDeposit = stakingContract.getPool(pid);
         assertEq(poolAfterDeposit.totalStaked, amountStaked + 60, "Total staked is wrong"); 
         assertEq(bolt.balanceOf(address(stakingContract)), rewardAmount, "Balance wrong");
+    }
+
+    /// @notice Testing deposit with a reward < 0
+    function testStakerDepositWithNegativeReward() public {
+        uint256 amountStaked = 500;
+        int256 rewardAmount = -60;
+        uint256 absRewardAmount = uint256(-rewardAmount);
+        bolt.transfer(STAKER1, amountStaked);
+        stakingContract.createPool(50, 50, GAME, CHALLENGE, USER_ID);
+        oracle.updatePool(pid, 0, true); // the challenge opens for the first time
+        vm.prank(STAKER1);
+        stakingContract.deposit(amountStaked, pid); // a user deposits
+        oracle.updatePool(pid, 0, false); // the challenge closes 
+        vm.warp(10); 
+        oracle.updatePool(pid, rewardAmount, true); // the challenge finishes
+        vm.prank(STAKER1);
+        stakingContract.deposit(amountStaked, pid); // a user deposits
+        StakingContract.PoolInfo memory poolAfterDeposit = stakingContract.getPool(pid);
+        assertEq(poolAfterDeposit.totalStaked, amountStaked * 2 - absRewardAmount, "Total stake amount is wrong");
+        assertEq(bolt.balanceOf(DEVADDR), absRewardAmount, "Balance wrong");
     }
 
     /// @notice Test that pool creation reverts if the game is invalid
