@@ -101,6 +101,7 @@ contract StakingContractPoolCreationTest is Test {
         uint256 absRewardAmount = uint256(-rewardAmount);
         bolt.transfer(STAKER1, amountStaked);
         stakingContract.createPool(50, 50, GAME, CHALLENGE, USER_ID);
+        vm.warp(2);                     
         oracle.updatePool(pid, 0, true); // the challenge opens for the first time
         vm.prank(STAKER1);
         stakingContract.deposit(amountStaked, pid); // a user deposits
@@ -112,6 +113,23 @@ contract StakingContractPoolCreationTest is Test {
         StakingContract.PoolInfo memory poolAfterDeposit = stakingContract.getPool(pid);
         assertEq(poolAfterDeposit.totalStaked, amountStaked * 2 - absRewardAmount, "Total stake amount is wrong");
         assertEq(bolt.balanceOf(DEVADDR), absRewardAmount, "Balance wrong");
+    }
+
+    /**
+        @notice The following suite of tests are for the general properties of the deposit function
+        Write the general properties...
+     */
+    function testFuzz_DepositWithPositiveRewardAmount(uint256 _rewardAmount, uint256 _amountStaked) public {
+        vm.assume(_rewardAmount < 2200000 && _rewardAmount > 0);
+        vm.assume(_amountStaked < 25000000000 && _amountStaked > 0);
+        bolt.transfer(STAKER1, _amountStaked);
+        stakingContract.createPool(50, 50, GAME, CHALLENGE, USER_ID);
+        vm.warp(2);                     
+        oracle.updatePool(pid, int256(_rewardAmount), true);
+        vm.prank(STAKER1);
+        stakingContract.deposit(_amountStaked, pid);
+        StakingContract.PoolInfo memory poolAfterDeposit = stakingContract.getPool(pid);
+        assertEq(poolAfterDeposit.totalStaked, _rewardAmount + _amountStaked, "Total staked is wrong");
     }
 
     /// @notice Test that pool creation reverts if the game is invalid

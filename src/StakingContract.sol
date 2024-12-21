@@ -85,6 +85,7 @@ contract StakingContract is Pausable, Ownable {
         );
     }
 
+
     function deposit(uint256 _amount, bytes32 _pid) public {
         require(_amount > 0, "Amount cannot be zero");
         (bool isActive, int256 rewardAmount, uint256 lastRewardUpdate) = oracle

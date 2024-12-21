@@ -14,8 +14,8 @@ contract Bolt is ERC20, ERC20Burnable, ERC20Pausable, Ownable, ERC20Permit {
     constructor(
         address _initialOwner
     ) ERC20("Bolt", "BLT") Ownable(_initialOwner) ERC20Permit("Bolt") {
-        _mint(msg.sender, 10000000 * 10 ** decimals());
-        _mint(address(this), 100000* 10 ** decimals());
+        _mint(msg.sender, 25000000000 * 10 ** decimals());
+        _mint(address(this), 25000000000 * 10 ** decimals());
     }
 
     function pause() public onlyOwner {
@@ -30,6 +30,9 @@ contract Bolt is ERC20, ERC20Burnable, ERC20Pausable, Ownable, ERC20Permit {
         _mint(to, amount);
     }
 
+    function decimals() public view virtual override returns (uint8) {
+        return 6;
+    }      
     function safeEBoltTransfer(address _to, uint256 _amount) public {
         require(msg.sender == stakingContract, "Only staking contract can call this");
 
