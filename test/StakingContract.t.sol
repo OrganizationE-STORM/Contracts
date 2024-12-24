@@ -84,6 +84,14 @@ contract StakingContractPoolCreationTest is Test {
         );
     }
 
+    function calculateShares(
+        uint256 depositAmount,
+        uint256 totalStaked,
+        uint256 totalShares
+    ) internal pure returns (uint256) {
+        return (depositAmount * totalShares) / totalStaked;
+    }
+
     function testFuzz_DepositWithMultipleStakers(
         int256 _rewardAmount,
         uint256 _amountStakedFirst,
@@ -120,13 +128,17 @@ contract StakingContractPoolCreationTest is Test {
         vm.prank(STAKER1);
         stakingContract.deposit(_amountStakedFirst, pid);
 
+        uint256 staker1Shares = stakingContract.sharesByAddress(pid, STAKER1);
+        uint256 staker1ExpectedShares = stakingContract.INITIAL_SHARES() / stakingContract.PRECISION_FACTOR();
+        assertEq(staker1Shares == staker1ExpectedShares, true, "Staker1 shares incorrect after deposit");
+
         vm.prank(STAKER2);
         bolt.approve(address(stakingContract), _amountStakedSecond);
         vm.prank(STAKER2);
         stakingContract.deposit(_amountStakedSecond, pid);
 
         StakingContract.PoolInfo memory pool = stakingContract.getPool(pid);
-        
+
         if (_rewardAmount > 0) {
             uint256 totalStakedExpected = _amountStakedFirst +
                 _amountStakedSecond +
@@ -140,11 +152,9 @@ contract StakingContractPoolCreationTest is Test {
         } else {
             // These checks are needed to avoid underflow in the test
             uint256 totalStakedExpected = _amountStakedFirst +
-                    _amountStakedSecond;
+                _amountStakedSecond;
             uint256 absReward = uint256(-_rewardAmount);
-            if (
-                totalStakedExpected >= absReward
-            ) {
+            if (totalStakedExpected >= absReward) {
                 totalStakedExpected -= absReward;
             }
 
