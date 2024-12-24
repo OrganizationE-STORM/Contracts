@@ -14,7 +14,6 @@ contract Bolt is ERC20, ERC20Burnable, ERC20Pausable, Ownable, ERC20Permit {
     constructor(
         address _initialOwner
     ) ERC20("Bolt", "BLT") Ownable(_initialOwner) ERC20Permit("Bolt") {
-        _mint(msg.sender, 25000000000 * 10 ** decimals());
         _mint(address(this), 25000000000 * 10 ** decimals());
     }
 
