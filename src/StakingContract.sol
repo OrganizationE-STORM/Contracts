@@ -34,8 +34,8 @@ contract StakingContract is Pausable, Ownable {
     mapping(string => bool) public usersRegistered;
     mapping(bytes32 => mapping(address => uint256)) public sharesByAddress;
 
-    uint256 public constant PRECISION_FACTOR = 1e12;
-    uint256 public constant INITIAL_SHARES = 100_000 * PRECISION_FACTOR;
+    uint256 public constant SCALE = 1e18;
+    uint256 public constant INITIAL_SHARES = 100_000 * SCALE;
 
     address public devaddr;
     EStormOracle public oracle;
@@ -90,53 +90,53 @@ contract StakingContract is Pausable, Ownable {
     function deposit(uint256 _amount, bytes32 _pid) external {
         require(_amount > 0, "Amount cannot be zero");
 
-        // Retrieve pool information from the oracle
         (bool isActive, int256 rewardAmount, bool shouldCountReward) = oracle
             .getPool(_pid);
         require(isActive, "Pool not active");
+        
+        if (shouldCountReward) consumeReward(rewardAmount, _pid);
+        updatePoolInfo(_pid, _amount);
+        bolt.transferFrom(_msgSender(), address(this), _amount);
+        emit Deposit(_msgSender(), _amount, _pid);
+    }
 
-        address staker = _msgSender();
+    function consumeReward(int256 _rewardAmount, bytes32 _pid) private {
         PoolInfo storage pool = poolInfo[_pid];
-
-        // Calculate the updated total staked
-        uint256 updatedTotalStaked = pool.totalStaked + _amount;
-
-        if (shouldCountReward) {
-            if (rewardAmount > 0) {
-                updatedTotalStaked += uint256(rewardAmount);
-                safeEBoltTransfer(address(this), uint256(rewardAmount));
-                oracle.lockReward(_pid);
-            } else if (rewardAmount < 0) {
-                uint256 absRewardAmount = uint256(-rewardAmount);
-                if (updatedTotalStaked >= absRewardAmount) {
-                    updatedTotalStaked -= absRewardAmount;
-                    safeEBoltTransfer(devaddr, absRewardAmount);
-                    oracle.lockReward(_pid);
-                }
-            }
+        if (_rewardAmount > 0) {
+            pool.totalStaked += uint256(_rewardAmount);
+            safeEBoltTransfer(address(this), uint256(_rewardAmount));
+        } else if (_rewardAmount < 0) {
+            uint256 absRewardAmount = uint256(-_rewardAmount);
+            require(
+                pool.totalStaked >= absRewardAmount,
+                "Reward amount value not valid"
+            );
+            pool.totalStaked -= absRewardAmount;
+            safeEBoltTransfer(devaddr, absRewardAmount);
         }
+        oracle.lockReward(_pid);
+    }
+
+    function updatePoolInfo(bytes32 _pid, uint256 _amount) private {
+        PoolInfo storage pool = poolInfo[_pid];
+        uint256 totalStakedTmp = pool.totalStaked;
+        uint256 totalSharesTmp = pool.totalShares;
 
         if (pool.totalShares == 0) {
-            // Initialize the pool for the first deposit
-            pool.totalStaked = updatedTotalStaked;
-            pool.totalShares = INITIAL_SHARES / PRECISION_FACTOR;
-            sharesByAddress[_pid][staker] = INITIAL_SHARES / PRECISION_FACTOR;
+            pool.totalStaked += _amount;
+            pool.totalShares = INITIAL_SHARES / SCALE;
+            sharesByAddress[_pid][_msgSender()] = INITIAL_SHARES / SCALE;
         } else {
-            // Calculate shares for the staker
-            uint256 shares = (_amount * pool.totalShares * PRECISION_FACTOR) /
-                (updatedTotalStaked * PRECISION_FACTOR);
+            pool.totalStaked += _amount;
+            
+            pool.totalShares =
+                (((totalSharesTmp * SCALE) / totalStakedTmp) *
+                pool.totalStaked) / SCALE;
 
-            // Update the pool and staker's shares
-            pool.totalStaked = updatedTotalStaked;
-            pool.totalShares += shares;
-            sharesByAddress[_pid][staker] += shares;
+            sharesByAddress[_pid][_msgSender()] +=
+                pool.totalShares -
+                totalSharesTmp;
         }
-
-        // Transfer the deposit amount to the pool
-        bolt.transferFrom(staker, address(this), _amount);
-
-        // Emit a deposit event
-        emit Deposit(staker, _amount, _pid);
     }
 
     function safeEBoltTransfer(address _to, uint256 _amount) internal {

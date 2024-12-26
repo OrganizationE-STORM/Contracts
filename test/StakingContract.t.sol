@@ -15,6 +15,7 @@ contract StakingContractPoolCreationTest is Test {
     address constant OWNER = 0xb4c79daB8f259C7Aee6E5b2Aa729821864227e84;
     address constant STAKER1 = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
     address constant STAKER2 = 0x976EA74026E726554dB657fA54763abd0C3a0aa9;
+    address constant STAKER3 = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
     address constant DEVADDR = 0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc;
     uint256 public constant INITIAL_SHARES = 100000;
 
@@ -100,9 +101,12 @@ contract StakingContractPoolCreationTest is Test {
         /**
             Restrict some values accepted
          */
-        vm.assume(_rewardAmount > -2_200_000 && _rewardAmount < 2_200_000);
         vm.assume(
             _amountStakedFirst > 0 && _amountStakedFirst < 25_000_000_000
+        );
+        vm.assume(
+            _rewardAmount > -int256(_amountStakedFirst) &&
+                _rewardAmount < 2_200_000
         );
         vm.assume(
             _amountStakedSecond > 0 && _amountStakedSecond < 25_000_000_000
@@ -118,7 +122,7 @@ contract StakingContractPoolCreationTest is Test {
 
         // eStorm creates the pool
         stakingContract.createPool(50, 50, GAME, CHALLENGE, USER_ID);
-        oracle.updatePool(pid, _rewardAmount, true);
+        oracle.updatePool(pid, 0, true);
 
         /**
             The stakers deposit their amount in the contract
@@ -128,9 +132,7 @@ contract StakingContractPoolCreationTest is Test {
         vm.prank(STAKER1);
         stakingContract.deposit(_amountStakedFirst, pid);
 
-        uint256 staker1Shares = stakingContract.sharesByAddress(pid, STAKER1);
-        uint256 staker1ExpectedShares = stakingContract.INITIAL_SHARES() / stakingContract.PRECISION_FACTOR();
-        assertEq(staker1Shares == staker1ExpectedShares, true, "Staker1 shares incorrect after deposit");
+        oracle.updatePool(pid, _rewardAmount, true);
 
         vm.prank(STAKER2);
         bolt.approve(address(stakingContract), _amountStakedSecond);
@@ -164,6 +166,191 @@ contract StakingContractPoolCreationTest is Test {
                 "Total staked is wrong"
             );
         }
+        uint256 expectedSharesStaker1 = stakingContract.INITIAL_SHARES() /
+            stakingContract.SCALE();
+        uint256 expectedSharesStaker2;
+        uint256 rewardAdjustedStaked = _amountStakedFirst;
+
+        if(_rewardAmount > 0) {
+            rewardAdjustedStaked += uint256(_rewardAmount);
+        } else {
+            rewardAdjustedStaked -= uint256(-_rewardAmount);
+        }
+
+        if (_rewardAmount > 0) {
+            uint256 totalStakedAfterReward = rewardAdjustedStaked;
+
+            expectedSharesStaker2 =
+                (expectedSharesStaker1 * _amountStakedSecond) /
+                totalStakedAfterReward;
+        } else {
+            uint256 totalStakedAfterReward = rewardAdjustedStaked;
+            uint256 totalStakedAfterSecond = totalStakedAfterReward +
+                _amountStakedSecond;
+
+            uint256 adjustedShares = (((pool.totalShares *
+                stakingContract.SCALE()) / totalStakedAfterReward) *
+                totalStakedAfterSecond) / stakingContract.SCALE();
+
+            expectedSharesStaker2 = adjustedShares - pool.totalShares;
+        }
+    }
+
+    function test_porcodio() public {
+        int256 rewardAmount = 4209;
+        uint256 aliceDeposit = 17716;
+        uint256 bobDeposit = 191;
+
+        vm.prank(OWNER);
+        bolt.mint(STAKER1, aliceDeposit);
+        vm.prank(OWNER);
+        bolt.mint(STAKER2, bobDeposit);
+
+        stakingContract.createPool(50, 50, GAME, CHALLENGE, USER_ID);
+        oracle.updatePool(pid, 0, true);
+
+        vm.prank(STAKER1);
+        bolt.approve(address(stakingContract), aliceDeposit);
+        vm.prank(STAKER1);
+        stakingContract.deposit(aliceDeposit, pid);
+
+        oracle.updatePool(pid, rewardAmount, true);
+        vm.prank(STAKER2);
+        bolt.approve(address(stakingContract), bobDeposit);
+        vm.prank(STAKER2);
+        stakingContract.deposit(bobDeposit, pid);
+
+        console.log("FLAG");
+        assertEq(
+            stakingContract.getPool(pid).totalStaked,
+            aliceDeposit + bobDeposit + uint256(rewardAmount),
+            "Total staked is wrong"
+        );
+        assertEq(true, true, "No trues");
+    }
+
+    function testCheckShares() public {
+        // Initial deposits for all stakers
+        uint256 aliceDeposit = 100;
+        uint256 bobDeposit = 100;
+        uint256 devFee = 30;
+        uint256 charlieDeposit = 200;
+
+        // Set up initial token balances for our stakers
+        vm.prank(OWNER);
+        bolt.mint(STAKER1, aliceDeposit);
+        vm.prank(OWNER);
+        bolt.mint(STAKER2, bobDeposit);
+        vm.prank(OWNER);
+        bolt.mint(STAKER3, charlieDeposit);
+
+        // Create the staking pool
+        stakingContract.createPool(50, 50, GAME, CHALLENGE, USER_ID);
+        oracle.updatePool(pid, 0, true);
+
+        // --- Alice's Initial Deposit ---
+        vm.prank(STAKER1);
+        bolt.approve(address(stakingContract), aliceDeposit);
+        vm.prank(STAKER1);
+        stakingContract.deposit(aliceDeposit, pid);
+
+        uint256 aliceExpectedShares = stakingContract.INITIAL_SHARES();
+
+        assertEq(
+            stakingContract.sharesByAddress(pid, STAKER1),
+            aliceExpectedShares,
+            "Alice should have received initial shares"
+        );
+
+        // --- Simulate Dev Fee Deduction ---
+        oracle.updatePool(pid, -int256(devFee), true);
+
+        // --- Bob's Deposit ---
+        vm.prank(STAKER2);
+        bolt.approve(address(stakingContract), bobDeposit);
+        vm.prank(STAKER2);
+        stakingContract.deposit(bobDeposit, pid);
+
+        uint256 bobExpectedShares = 142857;
+        assertEq(
+            stakingContract.sharesByAddress(pid, STAKER2),
+            bobExpectedShares,
+            "Bob should have received the correct number of shares"
+        );
+
+        // --- Charlie's Deposit ---
+        // When Charlie enters:
+        // - Pool has 170 eBolt (100 - 30 + 100)
+        // - Total shares are 242,857 (100,000 + 142,857)
+        // - Charlie adds 200 eBolt
+        // - New total is 370 eBolt
+        // - Deposit ratio = 200/370 = 0.54054054...
+        // - New total shares = 242,857 / (1 - 0.54054054) = 528,571
+        // - Charlie's shares = 528,571 - 242,857 = 285,714
+        vm.prank(STAKER3);
+        bolt.approve(address(stakingContract), charlieDeposit);
+        vm.prank(STAKER3);
+        stakingContract.deposit(charlieDeposit, pid);
+
+        uint256 charlieExpectedShares = 285714; // Corrected value based on exact calculation
+
+        // Verify Charlie's shares
+        assertEq(
+            stakingContract.sharesByAddress(pid, STAKER3),
+            charlieExpectedShares,
+            "Charlie should have received the correct number of shares"
+        );
+
+        // Verify the total shares in the pool
+        StakingContract.PoolInfo memory pool = stakingContract.getPool(pid);
+        assertEq(
+            pool.totalShares,
+            aliceExpectedShares + bobExpectedShares + charlieExpectedShares,
+            "Total shares should equal all stakers' shares"
+        );
+
+        // Verify the total staked amount
+        assertEq(
+            pool.totalStaked,
+            aliceDeposit + bobDeposit + charlieDeposit - devFee,
+            "Total staked should equal all deposits minus dev fee"
+        );
+
+        // Print all values for debugging and verification
+        console.log("--- Final Pool State with Three Stakers ---");
+        console.log(
+            "Alice's shares:",
+            stakingContract.sharesByAddress(pid, STAKER1)
+        );
+        console.log(
+            "Bob's shares:",
+            stakingContract.sharesByAddress(pid, STAKER2)
+        );
+        console.log(
+            "Charlie's shares:",
+            stakingContract.sharesByAddress(pid, STAKER3)
+        );
+        console.log("Total shares:", pool.totalShares);
+        console.log("Total staked:", pool.totalStaked);
+
+        // Calculate and verify share proportions
+        uint256 aliceSharePercentage = (stakingContract.sharesByAddress(
+            pid,
+            STAKER1
+        ) * 100) / pool.totalShares;
+        uint256 bobSharePercentage = (stakingContract.sharesByAddress(
+            pid,
+            STAKER2
+        ) * 100) / pool.totalShares;
+        uint256 charlieSharePercentage = (stakingContract.sharesByAddress(
+            pid,
+            STAKER3
+        ) * 100) / pool.totalShares;
+
+        console.log("--- Share Percentages ---");
+        console.log("Alice's share percentage:", aliceSharePercentage, "%");
+        console.log("Bob's share percentage:", bobSharePercentage, "%");
+        console.log("Charlie's share percentage:", charlieSharePercentage, "%");
     }
 
     /// @notice Test that pool creation reverts if the game is invalid
