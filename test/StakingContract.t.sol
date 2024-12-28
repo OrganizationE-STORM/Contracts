@@ -6,6 +6,7 @@ import {Bolt} from "../src/Bolt.sol";
 import {StakingContract} from "../src/StakingContract.sol";
 import {EStormOracle} from "../src/EStormOracle.sol";
 import {console} from "forge-std/console.sol";
+import {TestingLibrary} from "./TestingLibrary.sol";
 
 contract StakingContractPoolCreationTest is Test {
     // Test Constants
@@ -93,12 +94,12 @@ contract StakingContractPoolCreationTest is Test {
 
         StakingContract.PoolInfo memory pool = stakingContract.getPool(pid);
 
-        uint256 totalStakedExpected = calculateTotalStaked(
+        uint256 totalStakedExpected = TestingLibrary.calculateTotalStaked(
             [_amountStakedFirst, _amountStakedSecond],
             _rewardAmount
         );
 
-        (uint256 totalShares2, uint256 stakerShares2) = calculateExpectedShares(
+        (uint256 totalShares2, uint256 stakerShares2) = TestingLibrary.calculateExpectedShares(
             100_000,
             pool.totalStaked - _amountStakedSecond, // Subtract STAKER2's stake to get previous staking
             _amountStakedSecond,
@@ -120,54 +121,6 @@ contract StakingContractPoolCreationTest is Test {
         stakingContract.deposit(_amount, pid);
     }
 
-    function calculateTotalStaked(
-        uint256[2] memory _amountsStaked,
-        int256 _rewardAmount
-    ) public pure returns (uint256) {
-        uint256 totalStakedExpected = 0;
-
-        for (uint256 i = 0; i < _amountsStaked.length; i++) {
-            totalStakedExpected += _amountsStaked[i];
-        }
-
-        if (_rewardAmount > 0) {
-            totalStakedExpected += uint256(_rewardAmount);
-        } else {
-            uint256 absReward = uint256(-_rewardAmount);
-            if (totalStakedExpected >= absReward) {
-                totalStakedExpected -= absReward;
-            }
-        }
-
-        return totalStakedExpected;
-    }
-
-    function calculateExpectedShares(
-        uint256 totalShares,
-        uint256 totalStaked,
-        uint256 amountStaked,
-        uint256 initialShares,
-        uint256 scale
-    ) public pure returns (uint256 newShares, uint256 stakerShares) {
-        // Case 1: First staker in the pool
-        if (totalShares == 0) {
-            newShares = initialShares / scale;
-            stakerShares = newShares;
-            return (newShares, stakerShares);
-        }
-
-        // Case 2: Subsequent stakers
-        uint256 updatedTotalStaked = totalStaked + amountStaked;
-
-        newShares =
-            (((totalShares * scale) / totalStaked) * updatedTotalStaked) /
-            scale;
-        
-        stakerShares = newShares - totalShares;
-
-        return (newShares, stakerShares);
-    }
-
     function test_porcodio() public {
         int256 rewardAmount = -50003;
         uint256 aliceDeposit = 50000000;
@@ -186,7 +139,7 @@ contract StakingContractPoolCreationTest is Test {
         vm.prank(STAKER1);
         stakingContract.deposit(aliceDeposit, pid);
 
-        (uint256 totalShares1, uint256 stakerShares1) = calculateExpectedShares(
+        (uint256 totalShares1, uint256 stakerShares1) = TestingLibrary.calculateExpectedShares(
             0, // No previous shares
             0, // No previous staking
             aliceDeposit,
@@ -211,7 +164,7 @@ contract StakingContractPoolCreationTest is Test {
 
         // Calculate expected shares for STAKER2
         
-        (uint256 totalShares2, uint256 stakerShares2) = calculateExpectedShares(
+        (uint256 totalShares2, uint256 stakerShares2) = TestingLibrary.calculateExpectedShares(
             totalShares1,
             pool.totalStaked - bobDeposit, // Subtract STAKER2's stake to get previous staking
             bobDeposit,
