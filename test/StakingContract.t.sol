@@ -98,14 +98,21 @@ contract StakingContractPoolCreationTest is Test {
             _rewardAmount
         );
 
+        (uint256 totalShares2, uint256 stakerShares2) = calculateExpectedShares(
+            100_000,
+            pool.totalStaked - _amountStakedSecond, // Subtract STAKER2's stake to get previous staking
+            _amountStakedSecond,
+            stakingContract.INITIAL_SHARES(),
+            stakingContract.SCALE()
+        );
+
         // check
         assertEq(totalStakedExpected, pool.totalStaked, "Total staked is wrong");
+        assertEq(totalShares2, pool.totalShares, "Total shares wrong");
         assertEq(stakingContract.sharesByAddress(pid, STAKER1), 100_000, "There must be at least 100_000 shares");
+        assertEq(stakerShares2, stakingContract.sharesByAddress(pid, STAKER2), "STAKER2 shares wrong");
     }
 
-    /**
-        Utility function to limit number of repeated lines
-     */
     function stakeToken(address _staker, uint256 _amount) private {
         vm.prank(_staker);
         bolt.approve(address(stakingContract), _amount);
@@ -116,7 +123,7 @@ contract StakingContractPoolCreationTest is Test {
     function calculateTotalStaked(
         uint256[2] memory _amountsStaked,
         int256 _rewardAmount
-    ) private returns (uint256) {
+    ) public pure returns (uint256) {
         uint256 totalStakedExpected = 0;
 
         for (uint256 i = 0; i < _amountsStaked.length; i++) {
