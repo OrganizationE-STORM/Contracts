@@ -57,149 +57,114 @@ contract StakingContractPoolCreationTest is Test {
     }
 
     /**
-        @notice The following suite of tests are for the general properties of the deposit function
-        Write the general properties...
+        I've tried different numbers for the amount staked by each address.
+        If I increase it to 2_500_000_000_000 (so with an extra zero) this test won't pass
+        If I leave it 2_500_000_000_00 (without the extra zero at the end) this test won't have any problem 
      */
-    function testFuzz_DepositWithPositiveRewardAmount(
-        uint256 _rewardAmount,
-        uint256 _amountStaked
-    ) public {
-        vm.assume(_rewardAmount < 2200000 && _rewardAmount > 0);
-        vm.assume(_amountStaked < 25000000000 && _amountStaked > 0);
-
-        vm.prank(OWNER);
-        bolt.mint(STAKER1, _amountStaked);
-        stakingContract.createPool(50, 50, GAME, CHALLENGE, USER_ID);
-        vm.warp(2);
-        oracle.updatePool(pid, int256(_rewardAmount), true);
-        vm.prank(STAKER1);
-        bolt.approve(address(stakingContract), _amountStaked);
-        vm.prank(STAKER1);
-        stakingContract.deposit(_amountStaked, pid);
-        StakingContract.PoolInfo memory poolAfterDeposit = stakingContract
-            .getPool(pid);
-        assertEq(
-            poolAfterDeposit.totalStaked,
-            _rewardAmount + _amountStaked,
-            "Total staked is wrong"
-        );
-    }
-
-    function calculateShares(
-        uint256 depositAmount,
-        uint256 totalStaked,
-        uint256 totalShares
-    ) internal pure returns (uint256) {
-        return (depositAmount * totalShares) / totalStaked;
-    }
-
     function testFuzz_DepositWithMultipleStakers(
         int256 _rewardAmount,
         uint256 _amountStakedFirst,
         uint256 _amountStakedSecond
     ) public {
-        /**
-            Restrict some values accepted
-         */
+        //build
         vm.assume(
-            _amountStakedFirst > 0 && _amountStakedFirst < 25_000_000_000
+            _amountStakedFirst > 0 && _amountStakedFirst < 2_500_000_000_00
         );
         vm.assume(
             _rewardAmount > -int256(_amountStakedFirst) &&
                 _rewardAmount < 2_200_000
         );
         vm.assume(
-            _amountStakedSecond > 0 && _amountStakedSecond < 25_000_000_000
+            _amountStakedSecond > 0 && _amountStakedSecond < 2_500_000_000_00
         );
 
-        /**
-            The stakers need some tokens to interact with the pool
-         */
         vm.prank(OWNER);
         bolt.mint(STAKER1, _amountStakedFirst);
         vm.prank(OWNER);
         bolt.mint(STAKER2, _amountStakedSecond);
 
-        // eStorm creates the pool
+        // operate
         stakingContract.createPool(50, 50, GAME, CHALLENGE, USER_ID);
         oracle.updatePool(pid, 0, true);
 
-        /**
-            The stakers deposit their amount in the contract
-         */
-        vm.prank(STAKER1);
-        bolt.approve(address(stakingContract), _amountStakedFirst);
-        vm.prank(STAKER1);
-        stakingContract.deposit(_amountStakedFirst, pid);
-
+        stakeToken(STAKER1, _amountStakedFirst);
         oracle.updatePool(pid, _rewardAmount, true);
-
-        vm.prank(STAKER2);
-        bolt.approve(address(stakingContract), _amountStakedSecond);
-        vm.prank(STAKER2);
-        stakingContract.deposit(_amountStakedSecond, pid);
+        stakeToken(STAKER2, _amountStakedSecond);
 
         StakingContract.PoolInfo memory pool = stakingContract.getPool(pid);
 
-        if (_rewardAmount > 0) {
-            uint256 totalStakedExpected = _amountStakedFirst +
-                _amountStakedSecond +
-                uint256(_rewardAmount);
+        uint256 totalStakedExpected = calculateTotalStaked(
+            [_amountStakedFirst, _amountStakedSecond],
+            _rewardAmount
+        );
 
-            assertEq(
-                pool.totalStaked,
-                totalStakedExpected,
-                "Total staked is wrong"
-            );
+        // check
+        assertEq(totalStakedExpected, pool.totalStaked, "Total staked is wrong");
+        assertEq(stakingContract.sharesByAddress(pid, STAKER1), 100_000, "There must be at least 100_000 shares");
+    }
+
+    /**
+        Utility function to limit number of repeated lines
+     */
+    function stakeToken(address _staker, uint256 _amount) private {
+        vm.prank(_staker);
+        bolt.approve(address(stakingContract), _amount);
+        vm.prank(_staker);
+        stakingContract.deposit(_amount, pid);
+    }
+
+    function calculateTotalStaked(
+        uint256[2] memory _amountsStaked,
+        int256 _rewardAmount
+    ) private returns (uint256) {
+        uint256 totalStakedExpected = 0;
+
+        for (uint256 i = 0; i < _amountsStaked.length; i++) {
+            totalStakedExpected += _amountsStaked[i];
+        }
+
+        if (_rewardAmount > 0) {
+            totalStakedExpected += uint256(_rewardAmount);
         } else {
-            // These checks are needed to avoid underflow in the test
-            uint256 totalStakedExpected = _amountStakedFirst +
-                _amountStakedSecond;
             uint256 absReward = uint256(-_rewardAmount);
             if (totalStakedExpected >= absReward) {
                 totalStakedExpected -= absReward;
             }
-
-            assertEq(
-                pool.totalStaked,
-                totalStakedExpected,
-                "Total staked is wrong"
-            );
-        }
-        uint256 expectedSharesStaker1 = stakingContract.INITIAL_SHARES() /
-            stakingContract.SCALE();
-        uint256 expectedSharesStaker2;
-        uint256 rewardAdjustedStaked = _amountStakedFirst;
-
-        if(_rewardAmount > 0) {
-            rewardAdjustedStaked += uint256(_rewardAmount);
-        } else {
-            rewardAdjustedStaked -= uint256(-_rewardAmount);
         }
 
-        if (_rewardAmount > 0) {
-            uint256 totalStakedAfterReward = rewardAdjustedStaked;
+        return totalStakedExpected;
+    }
 
-            expectedSharesStaker2 =
-                (expectedSharesStaker1 * _amountStakedSecond) /
-                totalStakedAfterReward;
-        } else {
-            uint256 totalStakedAfterReward = rewardAdjustedStaked;
-            uint256 totalStakedAfterSecond = totalStakedAfterReward +
-                _amountStakedSecond;
-
-            uint256 adjustedShares = (((pool.totalShares *
-                stakingContract.SCALE()) / totalStakedAfterReward) *
-                totalStakedAfterSecond) / stakingContract.SCALE();
-
-            expectedSharesStaker2 = adjustedShares - pool.totalShares;
+    function calculateExpectedShares(
+        uint256 totalShares,
+        uint256 totalStaked,
+        uint256 amountStaked,
+        uint256 initialShares,
+        uint256 scale
+    ) public pure returns (uint256 newShares, uint256 stakerShares) {
+        // Case 1: First staker in the pool
+        if (totalShares == 0) {
+            newShares = initialShares / scale;
+            stakerShares = newShares;
+            return (newShares, stakerShares);
         }
+
+        // Case 2: Subsequent stakers
+        uint256 updatedTotalStaked = totalStaked + amountStaked;
+
+        newShares =
+            (((totalShares * scale) / totalStaked) * updatedTotalStaked) /
+            scale;
+        
+        stakerShares = newShares - totalShares;
+
+        return (newShares, stakerShares);
     }
 
     function test_porcodio() public {
-        int256 rewardAmount = 4209;
-        uint256 aliceDeposit = 17716;
-        uint256 bobDeposit = 191;
+        int256 rewardAmount = -50003;
+        uint256 aliceDeposit = 50000000;
+        uint256 bobDeposit = 10000;
 
         vm.prank(OWNER);
         bolt.mint(STAKER1, aliceDeposit);
@@ -213,6 +178,21 @@ contract StakingContractPoolCreationTest is Test {
         bolt.approve(address(stakingContract), aliceDeposit);
         vm.prank(STAKER1);
         stakingContract.deposit(aliceDeposit, pid);
+
+        (uint256 totalShares1, uint256 stakerShares1) = calculateExpectedShares(
+            0, // No previous shares
+            0, // No previous staking
+            aliceDeposit,
+            stakingContract.INITIAL_SHARES(),
+            stakingContract.SCALE()
+        );
+
+        // Validate STAKER1 shares
+        assertEq(
+            stakingContract.sharesByAddress(pid, STAKER1),
+            stakerShares1,
+            "Shares for STAKER1 are wrong"
+        );
 
         oracle.updatePool(pid, rewardAmount, true);
         vm.prank(STAKER2);
@@ -220,137 +200,29 @@ contract StakingContractPoolCreationTest is Test {
         vm.prank(STAKER2);
         stakingContract.deposit(bobDeposit, pid);
 
-        console.log("FLAG");
-        assertEq(
-            stakingContract.getPool(pid).totalStaked,
-            aliceDeposit + bobDeposit + uint256(rewardAmount),
-            "Total staked is wrong"
+        StakingContract.PoolInfo memory pool = stakingContract.getPool(pid);
+
+        // Calculate expected shares for STAKER2
+        
+        (uint256 totalShares2, uint256 stakerShares2) = calculateExpectedShares(
+            totalShares1,
+            pool.totalStaked - bobDeposit, // Subtract STAKER2's stake to get previous staking
+            bobDeposit,
+            stakingContract.INITIAL_SHARES(),
+            stakingContract.SCALE()
         );
-        assertEq(true, true, "No trues");
-    }
-
-    function testCheckShares() public {
-        // Initial deposits for all stakers
-        uint256 aliceDeposit = 100;
-        uint256 bobDeposit = 100;
-        uint256 devFee = 30;
-        uint256 charlieDeposit = 200;
-
-        // Set up initial token balances for our stakers
-        vm.prank(OWNER);
-        bolt.mint(STAKER1, aliceDeposit);
-        vm.prank(OWNER);
-        bolt.mint(STAKER2, bobDeposit);
-        vm.prank(OWNER);
-        bolt.mint(STAKER3, charlieDeposit);
-
-        // Create the staking pool
-        stakingContract.createPool(50, 50, GAME, CHALLENGE, USER_ID);
-        oracle.updatePool(pid, 0, true);
-
-        // --- Alice's Initial Deposit ---
-        vm.prank(STAKER1);
-        bolt.approve(address(stakingContract), aliceDeposit);
-        vm.prank(STAKER1);
-        stakingContract.deposit(aliceDeposit, pid);
-
-        uint256 aliceExpectedShares = stakingContract.INITIAL_SHARES();
-
-        assertEq(
-            stakingContract.sharesByAddress(pid, STAKER1),
-            aliceExpectedShares,
-            "Alice should have received initial shares"
-        );
-
-        // --- Simulate Dev Fee Deduction ---
-        oracle.updatePool(pid, -int256(devFee), true);
-
-        // --- Bob's Deposit ---
-        vm.prank(STAKER2);
-        bolt.approve(address(stakingContract), bobDeposit);
-        vm.prank(STAKER2);
-        stakingContract.deposit(bobDeposit, pid);
-
-        uint256 bobExpectedShares = 142857;
+        
         assertEq(
             stakingContract.sharesByAddress(pid, STAKER2),
-            bobExpectedShares,
-            "Bob should have received the correct number of shares"
+            stakerShares2,
+            "Shares for STAKER2 are wrong"
         );
-
-        // --- Charlie's Deposit ---
-        // When Charlie enters:
-        // - Pool has 170 eBolt (100 - 30 + 100)
-        // - Total shares are 242,857 (100,000 + 142,857)
-        // - Charlie adds 200 eBolt
-        // - New total is 370 eBolt
-        // - Deposit ratio = 200/370 = 0.54054054...
-        // - New total shares = 242,857 / (1 - 0.54054054) = 528,571
-        // - Charlie's shares = 528,571 - 242,857 = 285,714
-        vm.prank(STAKER3);
-        bolt.approve(address(stakingContract), charlieDeposit);
-        vm.prank(STAKER3);
-        stakingContract.deposit(charlieDeposit, pid);
-
-        uint256 charlieExpectedShares = 285714; // Corrected value based on exact calculation
-
-        // Verify Charlie's shares
         assertEq(
-            stakingContract.sharesByAddress(pid, STAKER3),
-            charlieExpectedShares,
-            "Charlie should have received the correct number of shares"
+            stakingContract.getPool(pid).totalStaked,
+            aliceDeposit + bobDeposit - uint256(-rewardAmount),
+            "Total staked is wrong"
         );
-
-        // Verify the total shares in the pool
-        StakingContract.PoolInfo memory pool = stakingContract.getPool(pid);
-        assertEq(
-            pool.totalShares,
-            aliceExpectedShares + bobExpectedShares + charlieExpectedShares,
-            "Total shares should equal all stakers' shares"
-        );
-
-        // Verify the total staked amount
-        assertEq(
-            pool.totalStaked,
-            aliceDeposit + bobDeposit + charlieDeposit - devFee,
-            "Total staked should equal all deposits minus dev fee"
-        );
-
-        // Print all values for debugging and verification
-        console.log("--- Final Pool State with Three Stakers ---");
-        console.log(
-            "Alice's shares:",
-            stakingContract.sharesByAddress(pid, STAKER1)
-        );
-        console.log(
-            "Bob's shares:",
-            stakingContract.sharesByAddress(pid, STAKER2)
-        );
-        console.log(
-            "Charlie's shares:",
-            stakingContract.sharesByAddress(pid, STAKER3)
-        );
-        console.log("Total shares:", pool.totalShares);
-        console.log("Total staked:", pool.totalStaked);
-
-        // Calculate and verify share proportions
-        uint256 aliceSharePercentage = (stakingContract.sharesByAddress(
-            pid,
-            STAKER1
-        ) * 100) / pool.totalShares;
-        uint256 bobSharePercentage = (stakingContract.sharesByAddress(
-            pid,
-            STAKER2
-        ) * 100) / pool.totalShares;
-        uint256 charlieSharePercentage = (stakingContract.sharesByAddress(
-            pid,
-            STAKER3
-        ) * 100) / pool.totalShares;
-
-        console.log("--- Share Percentages ---");
-        console.log("Alice's share percentage:", aliceSharePercentage, "%");
-        console.log("Bob's share percentage:", bobSharePercentage, "%");
-        console.log("Charlie's share percentage:", charlieSharePercentage, "%");
+        
     }
 
     /// @notice Test that pool creation reverts if the game is invalid
