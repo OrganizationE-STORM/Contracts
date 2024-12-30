@@ -18,6 +18,7 @@ contract StakingContract is Pausable, Ownable {
     );
 
     event Deposit(address staker, uint256 amount, bytes32 pid);
+    event Withdraw(address staker, uint256 amount, uint256 reward, uint256 fee, bytes32 pid);
 
     struct PoolInfo {
         bytes32 id;
@@ -111,11 +112,28 @@ contract StakingContract is Pausable, Ownable {
 
         if (shouldCountReward) consumeReward(rewardAmount, _pid);
 
+        (uint256 fee, uint256 reward, uint256 amountUnstaked) = updatePoolInfoAfterWithdraw(_pid); 
+
+        safeEBoltTransfer(devaddr, fee);
+        safeEBoltTransfer(_msgSender(), reward);
+        emit Withdraw(_msgSender(), amountUnstaked, reward, fee, _pid);
+    }
+
+    function updatePoolInfoAfterWithdraw(bytes32 _pid) private returns(uint256 _fee, uint256 _reward, uint256 _amountUnstaked) {
         PoolInfo storage pool = poolInfo[_pid];
-        
+
+        uint256 currentShares = sharesByAddress[_pid][_msgSender()];
+        uint256 scaledAmount = (currentShares * pool.totalStaked * SCALE) / (pool.totalShares * SCALE);
+        uint256 reward = (currentShares * pool.totalStaked * SCALE) / (pool.totalShares * SCALE);
+        uint256 fee = (reward * 2 * SCALE) / (100 * SCALE); 
+
+        reward -= fee;
 
         pool.totalStaked -= scaledAmount;
-        sharesByAddress[_pid][_msgSender()] = 0;
+        pool.totalShares -= currentShares;
+        sharesByAddress[_pid][msg.sender] = 0;
+
+        return (fee, reward, scaledAmount);
     }
 
     //TODO: add the check on the total supply if rewardAmount is positive

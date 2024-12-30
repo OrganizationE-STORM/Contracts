@@ -123,7 +123,7 @@ contract StakingContractPoolCreationTest is Test {
 
     function test_porcodio() public {
         int256 rewardAmount = 0;
-        uint256 aliceDeposit = 11;
+        uint256 aliceDeposit = 200;
         uint256 bobDeposit = 1e16 - 11;
 
         vm.prank(OWNER);
