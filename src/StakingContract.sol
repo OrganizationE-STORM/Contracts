@@ -34,12 +34,15 @@ contract StakingContract is Pausable, Ownable {
     mapping(string => bool) public usersRegistered;
     mapping(bytes32 => mapping(address => uint256)) public sharesByAddress;
 
-    uint256 public constant SCALE = 1e18;
+    uint256 public constant SCALE = 1e28;
     uint256 public constant INITIAL_SHARES = 100_000 * SCALE;
 
     address public devaddr;
     EStormOracle public oracle;
     Bolt public immutable bolt;
+
+    //TODO: add max circulating supply max circulating supply (1e16)
+    //TODO: at the starting sale: 6 * 1e14
 
     constructor(
         Bolt _bolt,
@@ -93,13 +96,29 @@ contract StakingContract is Pausable, Ownable {
         (bool isActive, int256 rewardAmount, bool shouldCountReward) = oracle
             .getPool(_pid);
         require(isActive, "Pool not active");
-        
+
         if (shouldCountReward) consumeReward(rewardAmount, _pid);
         updatePoolInfo(_pid, _amount);
+
         bolt.transferFrom(_msgSender(), address(this), _amount);
         emit Deposit(_msgSender(), _amount, _pid);
     }
 
+    function withdraw(bytes32 _pid) external {
+        (bool isActive, int256 rewardAmount, bool shouldCountReward) = oracle
+            .getPool(_pid);
+        require(isActive, "Pool not active");
+
+        if (shouldCountReward) consumeReward(rewardAmount, _pid);
+
+        PoolInfo storage pool = poolInfo[_pid];
+        
+
+        pool.totalStaked -= scaledAmount;
+        sharesByAddress[_pid][_msgSender()] = 0;
+    }
+
+    //TODO: add the check on the total supply if rewardAmount is positive
     function consumeReward(int256 _rewardAmount, bytes32 _pid) private {
         PoolInfo storage pool = poolInfo[_pid];
         if (_rewardAmount > 0) {
@@ -128,10 +147,11 @@ contract StakingContract is Pausable, Ownable {
             sharesByAddress[_pid][_msgSender()] = INITIAL_SHARES / SCALE;
         } else {
             pool.totalStaked += _amount;
-            
+
             pool.totalShares =
                 (((totalSharesTmp * SCALE) / totalStakedTmp) *
-                pool.totalStaked) / SCALE;
+                    pool.totalStaked) /
+                SCALE;
 
             sharesByAddress[_pid][_msgSender()] +=
                 pool.totalShares -

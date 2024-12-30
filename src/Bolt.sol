@@ -7,13 +7,17 @@ import {ERC20Burnable} from "@openzeppelin/contracts/token/ERC20/extensions/ERC2
 import {ERC20Pausable} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
 import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ERC20Capped} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Capped.sol";
 import {console} from "forge-std/console.sol";
-contract Bolt is ERC20, ERC20Burnable, ERC20Pausable, Ownable, ERC20Permit {
+
+contract Bolt is ERC20, ERC20Burnable, ERC20Pausable, Ownable, ERC20Permit, ERC20Capped {
     address stakingContract;
+
+    uint256 public constant MAX_SUPPLY = 1e18;
 
     constructor(
         address _initialOwner
-    ) ERC20("Bolt", "BLT") Ownable(_initialOwner) ERC20Permit("Bolt") {
+    ) ERC20("Bolt", "BLT") Ownable(_initialOwner) ERC20Permit("Bolt") ERC20Capped(MAX_SUPPLY) {
         _mint(address(this), 25000000000 * 10 ** decimals());
     }
 
@@ -54,7 +58,7 @@ contract Bolt is ERC20, ERC20Burnable, ERC20Pausable, Ownable, ERC20Permit {
         address from,
         address to,
         uint256 value
-    ) internal override(ERC20, ERC20Pausable) {
+    ) internal override(ERC20, ERC20Pausable, ERC20Capped) {
         super._update(from, to, value);
     }
 }

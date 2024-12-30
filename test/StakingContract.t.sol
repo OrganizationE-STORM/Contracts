@@ -69,14 +69,14 @@ contract StakingContractPoolCreationTest is Test {
     ) public {
         //build
         vm.assume(
-            _amountStakedFirst > 0 && _amountStakedFirst < 2_500_000_000_00
+            _amountStakedFirst > 0 && _amountStakedFirst < 5_000_000_000_000
         );
         vm.assume(
             _rewardAmount > -int256(_amountStakedFirst) &&
                 _rewardAmount < 2_200_000
         );
         vm.assume(
-            _amountStakedSecond > 0 && _amountStakedSecond < 2_500_000_000_00
+            _amountStakedSecond > 0 && _amountStakedSecond < 5_000_000_000_000
         );
 
         vm.prank(OWNER);
@@ -122,9 +122,9 @@ contract StakingContractPoolCreationTest is Test {
     }
 
     function test_porcodio() public {
-        int256 rewardAmount = -50003;
-        uint256 aliceDeposit = 50000000;
-        uint256 bobDeposit = 10000;
+        int256 rewardAmount = 0;
+        uint256 aliceDeposit = 11;
+        uint256 bobDeposit = 1e16 - 11;
 
         vm.prank(OWNER);
         bolt.mint(STAKER1, aliceDeposit);
@@ -182,7 +182,20 @@ contract StakingContractPoolCreationTest is Test {
             aliceDeposit + bobDeposit - uint256(-rewardAmount),
             "Total staked is wrong"
         );
-        
+
+        vm.prank(STAKER1);
+        stakingContract.withdraw(pid);
+
+        assertEq(
+            stakingContract.getPool(pid).totalStaked,
+            bobDeposit,
+            "Tokens not updated"   
+        );
+        assertEq(
+            stakingContract.getPool(pid).totalShares,
+            stakerShares2,
+            "Shares wrong"
+        );
     }
 
     /// @notice Test that pool creation reverts if the game is invalid
@@ -196,5 +209,10 @@ contract StakingContractPoolCreationTest is Test {
 
         vm.prank(STAKER1);
         stakingContract.deposit(500, pid);
+    }
+
+    function testFail_CreateMoreTokensThanPossible() public {
+        bolt = new Bolt(OWNER);
+        bolt.mint(OWNER, 1e40);
     }
 }
