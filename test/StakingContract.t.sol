@@ -57,11 +57,6 @@ contract StakingContractPoolCreationTest is Test {
         );
     }
 
-    /**
-        I've tried different numbers for the amount staked by each address.
-        If I increase it to 2_500_000_000_000 (so with an extra zero) this test won't pass
-        If I leave it 2_500_000_000_00 (without the extra zero at the end) this test won't have any problem 
-     */
     function testFuzz_DepositWithMultipleStakers(
         int256 _rewardAmount,
         uint256 _amountStakedFirst,
@@ -99,19 +94,78 @@ contract StakingContractPoolCreationTest is Test {
             _rewardAmount
         );
 
-        (uint256 totalShares2, uint256 stakerShares2) = TestingLibrary.calculateExpectedShares(
+        (uint256 totalShares2, uint256 stakerShares2) = TestingLibrary
+            .calculateExpectedShares(
+                100_000,
+                pool.totalStaked - _amountStakedSecond, // Subtract STAKER2's stake to get previous staking
+                _amountStakedSecond,
+                stakingContract.INITIAL_SHARES(),
+                stakingContract.SCALE()
+            );
+
+        assertEq(
+            totalStakedExpected,
+            pool.totalStaked,
+            "Total staked is wrong"
+        );
+        assertEq(totalShares2, pool.totalShares, "Total shares wrong");
+        assertEq(
+            stakingContract.sharesByAddress(pid, STAKER1),
             100_000,
-            pool.totalStaked - _amountStakedSecond, // Subtract STAKER2's stake to get previous staking
-            _amountStakedSecond,
-            stakingContract.INITIAL_SHARES(),
-            stakingContract.SCALE()
+            "There must be at least 100_000 shares"
+        );
+        assertEq(
+            stakerShares2,
+            stakingContract.sharesByAddress(pid, STAKER2),
+            "STAKER2 shares wrong"
+        );
+    }
+
+    function testFuzz_withdrawIsCorrect(
+        int256 _rewardFromOracle,
+        uint256 _amountStaker1,
+        uint256 _amountStaker2,
+        uint256 _amountStaker3
+    ) public {
+         vm.assume(
+            _amountStaker1 > 0 && _amountStaker1 < 5_000_000_000_000
+        );
+        vm.assume(
+            _rewardFromOracle > 0 &&
+                _rewardFromOracle < 2_200_000
+        );
+        vm.assume(
+            _amountStaker2 > 0 && _amountStaker2 < 5_000_000_000_000
+        );
+        vm.assume(
+            _amountStaker3 > 0 && _amountStaker3 < 5_000_000_000_000
         );
 
-        // check
-        assertEq(totalStakedExpected, pool.totalStaked, "Total staked is wrong");
-        assertEq(totalShares2, pool.totalShares, "Total shares wrong");
-        assertEq(stakingContract.sharesByAddress(pid, STAKER1), 100_000, "There must be at least 100_000 shares");
-        assertEq(stakerShares2, stakingContract.sharesByAddress(pid, STAKER2), "STAKER2 shares wrong");
+        uint256 devAddrBalanceBefore = bolt.balanceOf(DEVADDR);
+        mint(STAKER1, _amountStaker1);
+        mint(STAKER2, _amountStaker2);
+        mint(STAKER3, _amountStaker3);
+
+        vm.assume(_rewardFromOracle > 0);
+        stakingContract.createPool(50, 50, GAME, CHALLENGE, USER_ID);
+        oracle.updatePool(pid, 0, true);
+
+        stakeToken(STAKER1, _amountStaker1);
+        stakeToken(STAKER2, _amountStaker2);
+        stakeToken(STAKER3, _amountStaker3);
+
+        oracle.updatePool(pid, _rewardFromOracle, true);
+
+        vm.prank(STAKER3);
+        (uint256 reward, uint256 fee) = stakingContract.previewUnstakeReward(pid);
+
+        assertEq(fee > 0, true, "Reward amount is less than before");
+        assertEq()
+    }
+
+    function mint(address _receiver, uint256 _amount) private {
+        vm.prank(OWNER);
+        bolt.mint(_receiver, _amount);
     }
 
     function stakeToken(address _staker, uint256 _amount) private {
@@ -123,8 +177,8 @@ contract StakingContractPoolCreationTest is Test {
 
     function test_porcodio() public {
         int256 rewardAmount = 0;
-        uint256 aliceDeposit = 200;
-        uint256 bobDeposit = 1e16 - 11;
+        uint256 aliceDeposit = 100;
+        uint256 bobDeposit = 2000;
 
         vm.prank(OWNER);
         bolt.mint(STAKER1, aliceDeposit);
@@ -139,13 +193,14 @@ contract StakingContractPoolCreationTest is Test {
         vm.prank(STAKER1);
         stakingContract.deposit(aliceDeposit, pid);
 
-        (uint256 totalShares1, uint256 stakerShares1) = TestingLibrary.calculateExpectedShares(
-            0, // No previous shares
-            0, // No previous staking
-            aliceDeposit,
-            stakingContract.INITIAL_SHARES(),
-            stakingContract.SCALE()
-        );
+        (uint256 totalShares1, uint256 stakerShares1) = TestingLibrary
+            .calculateExpectedShares(
+                0, // No previous shares
+                0, // No previous staking
+                aliceDeposit,
+                stakingContract.INITIAL_SHARES(),
+                stakingContract.SCALE()
+            );
 
         // Validate STAKER1 shares
         assertEq(
@@ -163,15 +218,16 @@ contract StakingContractPoolCreationTest is Test {
         StakingContract.PoolInfo memory pool = stakingContract.getPool(pid);
 
         // Calculate expected shares for STAKER2
-        
-        (uint256 totalShares2, uint256 stakerShares2) = TestingLibrary.calculateExpectedShares(
-            totalShares1,
-            pool.totalStaked - bobDeposit, // Subtract STAKER2's stake to get previous staking
-            bobDeposit,
-            stakingContract.INITIAL_SHARES(),
-            stakingContract.SCALE()
-        );
-        
+
+        (uint256 totalShares2, uint256 stakerShares2) = TestingLibrary
+            .calculateExpectedShares(
+                totalShares1,
+                pool.totalStaked - bobDeposit, // Subtract STAKER2's stake to get previous staking
+                bobDeposit,
+                stakingContract.INITIAL_SHARES(),
+                stakingContract.SCALE()
+            );
+
         assertEq(
             stakingContract.sharesByAddress(pid, STAKER2),
             stakerShares2,
@@ -189,13 +245,16 @@ contract StakingContractPoolCreationTest is Test {
         assertEq(
             stakingContract.getPool(pid).totalStaked,
             bobDeposit,
-            "Tokens not updated"   
+            "Tokens not updated"
         );
         assertEq(
             stakingContract.getPool(pid).totalShares,
             stakerShares2,
             "Shares wrong"
         );
+
+        assertEq(bolt.balanceOf(STAKER1), 98, "ALICE balance wrong");
+        assertEq(bolt.balanceOf(DEVADDR), 2, "DEVADDRESS balance wrong");
     }
 
     /// @notice Test that pool creation reverts if the game is invalid

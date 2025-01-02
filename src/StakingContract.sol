@@ -18,7 +18,13 @@ contract StakingContract is Pausable, Ownable {
     );
 
     event Deposit(address staker, uint256 amount, bytes32 pid);
-    event Withdraw(address staker, uint256 amount, uint256 reward, uint256 fee, bytes32 pid);
+    event Withdraw(
+        address staker,
+        uint256 amount,
+        uint256 reward,
+        uint256 fee,
+        bytes32 pid
+    );
 
     struct PoolInfo {
         bytes32 id;
@@ -37,13 +43,11 @@ contract StakingContract is Pausable, Ownable {
 
     uint256 public constant SCALE = 1e28;
     uint256 public constant INITIAL_SHARES = 100_000 * SCALE;
+    uint8 public feePerc = 2;
 
     address public devaddr;
     EStormOracle public oracle;
     Bolt public immutable bolt;
-
-    //TODO: add max circulating supply max circulating supply (1e16)
-    //TODO: at the starting sale: 6 * 1e14
 
     constructor(
         Bolt _bolt,
@@ -112,28 +116,45 @@ contract StakingContract is Pausable, Ownable {
 
         if (shouldCountReward) consumeReward(rewardAmount, _pid);
 
-        (uint256 fee, uint256 reward, uint256 amountUnstaked) = updatePoolInfoAfterWithdraw(_pid); 
+        (uint256 fee, uint256 reward) = updatePoolInfoAfterWithdraw(_pid);
 
         safeEBoltTransfer(devaddr, fee);
         safeEBoltTransfer(_msgSender(), reward);
-        emit Withdraw(_msgSender(), amountUnstaked, reward, fee, _pid);
+        emit Withdraw(_msgSender(), reward, reward, fee, _pid);
     }
 
-    function updatePoolInfoAfterWithdraw(bytes32 _pid) private returns(uint256 _fee, uint256 _reward, uint256 _amountUnstaked) {
+    function updatePoolInfoAfterWithdraw(
+        bytes32 _pid
+    ) private returns (uint256 _fee, uint256 _reward) {
         PoolInfo storage pool = poolInfo[_pid];
 
         uint256 currentShares = sharesByAddress[_pid][_msgSender()];
-        uint256 scaledAmount = (currentShares * pool.totalStaked * SCALE) / (pool.totalShares * SCALE);
-        uint256 reward = (currentShares * pool.totalStaked * SCALE) / (pool.totalShares * SCALE);
-        uint256 fee = (reward * 2 * SCALE) / (100 * SCALE); 
+        uint256 reward = (currentShares * pool.totalStaked * SCALE) /
+            (pool.totalShares * SCALE);
 
+        uint256 fee = (reward * feePerc * SCALE) / (100 * SCALE);
+
+        pool.totalStaked -= reward;
         reward -= fee;
 
-        pool.totalStaked -= scaledAmount;
         pool.totalShares -= currentShares;
-        sharesByAddress[_pid][msg.sender] = 0;
+        sharesByAddress[_pid][_msgSender()] = 0;
 
-        return (fee, reward, scaledAmount);
+        return (fee, reward);
+    }
+
+    /**
+        this function can be used to check the amount of tokens that the user will receive when the staker withdraws
+     */
+    function previewUnstakeReward(bytes32 _pid) external view returns(uint256 _reward, uint256 _fee) {
+        PoolInfo storage pool = poolInfo[_pid];
+
+        uint256 currentShares = sharesByAddress[_pid][_msgSender()];
+        uint256 reward = (currentShares * pool.totalStaked * SCALE) /
+            (pool.totalShares * SCALE);
+
+        uint256 fee = (reward * feePerc * SCALE) / (100 * SCALE);
+        return (reward, fee);
     }
 
     //TODO: add the check on the total supply if rewardAmount is positive
@@ -195,6 +216,10 @@ contract StakingContract is Pausable, Ownable {
 
     function setDevAddress(address _addr) external onlyOwner {
         devaddr = _addr;
+    }
+
+    function setDevFee(uint8 _newFee) external onlyOwner {
+        feePerc = _newFee;
     }
 
     function pause() public onlyOwner {
