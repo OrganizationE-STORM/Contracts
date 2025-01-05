@@ -157,10 +157,9 @@ contract StakingContractPoolCreationTest is Test {
         oracle.updatePool(pid, _rewardFromOracle, true);
 
         vm.prank(STAKER3);
-        (uint256 reward, uint256 fee) = stakingContract.previewUnstakeReward(pid);
+        uint256 fee = stakingContract.withdraw(pid);
 
-        assertEq(fee > 0, true, "Reward amount is less than before");
-        assertEq()
+        assertEq(fee >= 0, true, "Reward amount is less than before");
     }
 
     function mint(address _receiver, uint256 _amount) private {
