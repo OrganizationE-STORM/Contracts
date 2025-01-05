@@ -109,7 +109,7 @@ contract StakingContract is Pausable, Ownable {
         emit Deposit(_msgSender(), _amount, _pid);
     }
 
-    function withdraw(bytes32 _pid) external {
+    function withdraw(bytes32 _pid) external returns(uint256 _stakerReward, uint256 _fee) {
         (bool isActive, int256 rewardAmount, bool shouldCountReward) = oracle
             .getPool(_pid);
         require(isActive, "Pool not active");
@@ -121,6 +121,8 @@ contract StakingContract is Pausable, Ownable {
         safeEBoltTransfer(devaddr, fee);
         safeEBoltTransfer(_msgSender(), reward);
         emit Withdraw(_msgSender(), reward, reward, fee, _pid);
+
+        return(reward, fee);
     }
 
     function updatePoolInfoAfterWithdraw(
@@ -131,7 +133,6 @@ contract StakingContract is Pausable, Ownable {
         uint256 currentShares = sharesByAddress[_pid][_msgSender()];
         uint256 reward = (currentShares * pool.totalStaked * SCALE) /
             (pool.totalShares * SCALE);
-
         uint256 fee = (reward * feePerc * SCALE) / (100 * SCALE);
 
         pool.totalStaked -= reward;
@@ -147,13 +148,25 @@ contract StakingContract is Pausable, Ownable {
         this function can be used to check the amount of tokens that the user will receive when the staker withdraws
      */
     function previewUnstakeReward(bytes32 _pid) external view returns(uint256 _reward, uint256 _fee) {
-        PoolInfo storage pool = poolInfo[_pid];
+        PoolInfo memory pool = poolInfo[_pid];
+
+        (bool isActive, int256 rewardAmount, bool shouldCountReward) = oracle
+            .getPool(_pid);
+
+        if (shouldCountReward) {
+            if(rewardAmount > 0)
+                pool.totalStaked += uint256(rewardAmount);
+            else if (rewardAmount < 0) {
+                uint256 absRewardAmount = uint256(-rewardAmount);
+                pool.totalStaked -= absRewardAmount;
+            }
+        } 
 
         uint256 currentShares = sharesByAddress[_pid][_msgSender()];
         uint256 reward = (currentShares * pool.totalStaked * SCALE) /
             (pool.totalShares * SCALE);
-
         uint256 fee = (reward * feePerc * SCALE) / (100 * SCALE);
+        reward -= fee;
         return (reward, fee);
     }
 

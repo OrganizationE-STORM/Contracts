@@ -4,6 +4,7 @@ out = "out"
 libs = ["lib"]
 
 [fuzz]
-runs = 25000
+runs = 30000
+max_test_rejects = 10000000
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

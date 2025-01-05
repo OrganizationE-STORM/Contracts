@@ -64,14 +64,14 @@ contract StakingContractPoolCreationTest is Test {
     ) public {
         //build
         vm.assume(
-            _amountStakedFirst > 0 && _amountStakedFirst < 5_000_000_000_000
+            _amountStakedFirst > 0 && _amountStakedFirst < 5_000_000_000_000_000
         );
         vm.assume(
             _rewardAmount > -int256(_amountStakedFirst) &&
-                _rewardAmount < 2_200_000
+                _rewardAmount < 2_200_000_000
         );
         vm.assume(
-            _amountStakedSecond > 0 && _amountStakedSecond < 5_000_000_000_000
+            _amountStakedSecond > 0 && _amountStakedSecond < 5_000_000_000_000_000
         );
 
         vm.prank(OWNER);
@@ -128,20 +128,19 @@ contract StakingContractPoolCreationTest is Test {
         uint256 _amountStaker3
     ) public {
          vm.assume(
-            _amountStaker1 > 0 && _amountStaker1 < 5_000_000_000_000
+            _amountStaker1 > 0 && _amountStaker1 < 5_000_000_000_000_000
         );
         vm.assume(
             _rewardFromOracle > 0 &&
-                _rewardFromOracle < 2_200_000
+                _rewardFromOracle < 2_200_000_000
         );
         vm.assume(
-            _amountStaker2 > 0 && _amountStaker2 < 5_000_000_000_000
+            _amountStaker2 > 0 && _amountStaker2 < 5_000_000_000_000_000
         );
         vm.assume(
-            _amountStaker3 > 0 && _amountStaker3 < 5_000_000_000_000
+            _amountStaker3 > 0 && _amountStaker3 < 5_000_000_000_000_000
         );
 
-        uint256 devAddrBalanceBefore = bolt.balanceOf(DEVADDR);
         mint(STAKER1, _amountStaker1);
         mint(STAKER2, _amountStaker2);
         mint(STAKER3, _amountStaker3);
@@ -157,9 +156,15 @@ contract StakingContractPoolCreationTest is Test {
         oracle.updatePool(pid, _rewardFromOracle, true);
 
         vm.prank(STAKER3);
-        uint256 fee = stakingContract.withdraw(pid);
+        (uint256 staker3Reward, uint256 fee) = stakingContract.previewUnstakeReward(pid);
+        uint256 balanceStaker3BeforeWithdraw = bolt.balanceOf(STAKER3);
+        vm.prank(STAKER3);
+        (uint256 expStaker3Reward, uint256 expFee) = stakingContract.withdraw(pid);
+        uint256 balanceStaker3AfterWithdraw = bolt.balanceOf(STAKER3);
 
-        assertEq(fee >= 0, true, "Reward amount is less than before");
+        assertEq(staker3Reward, expStaker3Reward, "Preview does not match the withdraw info");
+        assertEq(fee, expFee, "Preview does not match the withdraw info");
+        assertEq(balanceStaker3AfterWithdraw, balanceStaker3BeforeWithdraw + staker3Reward, "STAKER3 balance is wrong");
     }
 
     function mint(address _receiver, uint256 _amount) private {
