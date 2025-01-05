@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
+import {Bolt} from "../src/Bolt.sol";
+import {StakingContract} from "../src/StakingContract.sol";
+
 library TestingLibrary {
     function calculateTotalStaked(
         uint256[2] memory _amountsStaked,

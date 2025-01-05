@@ -124,7 +124,7 @@ contract StakingContract is Pausable, Ownable {
 
         return(reward, fee);
     }
-
+    
     function updatePoolInfoAfterWithdraw(
         bytes32 _pid
     ) private returns (uint256 _fee, uint256 _reward) {

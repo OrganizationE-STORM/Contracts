@@ -8,7 +8,7 @@ import {EStormOracle} from "../src/EStormOracle.sol";
 import {console} from "forge-std/console.sol";
 import {TestingLibrary} from "./TestingLibrary.sol";
 
-contract StakingContractPoolCreationTest is Test {
+contract DepositTest is Test {
     // Test Constants
     string constant GAME = "LOL";
     string constant CHALLENGE = "WOG";
@@ -121,52 +121,7 @@ contract StakingContractPoolCreationTest is Test {
         );
     }
 
-    function testFuzz_withdrawIsCorrect(
-        int256 _rewardFromOracle,
-        uint256 _amountStaker1,
-        uint256 _amountStaker2,
-        uint256 _amountStaker3
-    ) public {
-         vm.assume(
-            _amountStaker1 > 0 && _amountStaker1 < 5_000_000_000_000_000
-        );
-        vm.assume(
-            _rewardFromOracle > 0 &&
-                _rewardFromOracle < 2_200_000_000
-        );
-        vm.assume(
-            _amountStaker2 > 0 && _amountStaker2 < 5_000_000_000_000_000
-        );
-        vm.assume(
-            _amountStaker3 > 0 && _amountStaker3 < 5_000_000_000_000_000
-        );
-
-        mint(STAKER1, _amountStaker1);
-        mint(STAKER2, _amountStaker2);
-        mint(STAKER3, _amountStaker3);
-
-        vm.assume(_rewardFromOracle > 0);
-        stakingContract.createPool(50, 50, GAME, CHALLENGE, USER_ID);
-        oracle.updatePool(pid, 0, true);
-
-        stakeToken(STAKER1, _amountStaker1);
-        stakeToken(STAKER2, _amountStaker2);
-        stakeToken(STAKER3, _amountStaker3);
-
-        oracle.updatePool(pid, _rewardFromOracle, true);
-
-        vm.prank(STAKER3);
-        (uint256 staker3Reward, uint256 fee) = stakingContract.previewUnstakeReward(pid);
-        uint256 balanceStaker3BeforeWithdraw = bolt.balanceOf(STAKER3);
-        vm.prank(STAKER3);
-        (uint256 expStaker3Reward, uint256 expFee) = stakingContract.withdraw(pid);
-        uint256 balanceStaker3AfterWithdraw = bolt.balanceOf(STAKER3);
-
-        assertEq(staker3Reward, expStaker3Reward, "Preview does not match the withdraw info");
-        assertEq(fee, expFee, "Preview does not match the withdraw info");
-        assertEq(balanceStaker3AfterWithdraw, balanceStaker3BeforeWithdraw + staker3Reward, "STAKER3 balance is wrong");
-    }
-
+   
     function mint(address _receiver, uint256 _amount) private {
         vm.prank(OWNER);
         bolt.mint(_receiver, _amount);
@@ -178,6 +133,7 @@ contract StakingContractPoolCreationTest is Test {
         vm.prank(_staker);
         stakingContract.deposit(_amount, pid);
     }
+
 
     function test_porcodio() public {
         int256 rewardAmount = 0;
