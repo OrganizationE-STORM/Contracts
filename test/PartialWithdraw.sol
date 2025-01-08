@@ -39,25 +39,16 @@ contract WithdrawTest is Test {
         oracle.setStakingContract(address(stakingContract));
     }
 
-    function testFuzz_withdrawIsCorrect(
+    function testFuzz_partialWithdrawIsCorrect(
         int256 _rewardFromOracle,
         uint256 _amountStaker1,
         uint256 _amountStaker2,
         uint256 _amountStaker3
     ) public {
-        vm.assume(
-            _amountStaker1 > 0 && _amountStaker1 < 5_000_000_000_000_000
-        );
-        vm.assume(
-            _rewardFromOracle > 0 &&
-                _rewardFromOracle < 2_200_000_000
-        );
-        vm.assume(
-            _amountStaker2 > 0 && _amountStaker2 < 5_000_000_000_000_000
-        );
-        vm.assume(
-            _amountStaker3 > 0 && _amountStaker3 < 5_000_000_000_000_000
-        );
+        vm.assume(_amountStaker1 > 0 && _amountStaker1 < 5_000_000_000_000_000);
+        vm.assume(_rewardFromOracle > 0 && _rewardFromOracle < 2_200_000_000);
+        vm.assume(_amountStaker2 > 0 && _amountStaker2 < 5_000_000_000_000_000);
+        vm.assume(_amountStaker3 > 0 && _amountStaker3 < 5_000_000_000_000_000);
 
         mint(STAKER1, _amountStaker1);
         mint(STAKER2, _amountStaker2);
@@ -69,19 +60,65 @@ contract WithdrawTest is Test {
 
         stakeToken(STAKER1, _amountStaker1);
         stakeToken(STAKER2, _amountStaker2);
-        stakeToken(STAKER3, _amountStaker3);        
+        stakeToken(STAKER3, _amountStaker3);
 
         oracle.updatePool(pid, _rewardFromOracle, true);
 
         vm.prank(STAKER3);
-        (uint256 staker3Reward, uint256 fee) = stakingContract.previewUnstakeReward(pid);
+        (uint256 staker3Reward, uint256 fee) = stakingContract
+            .previewUnstakeReward(pid);
         uint256 balanceStaker3BeforeWithdraw = bolt.balanceOf(STAKER3);
 
         vm.prank(STAKER3);
-        stakingContract.withdraw(pid);
+        stakingContract.withdraw(
+            pid
+        );
         uint256 balanceStaker3AfterWithdraw = bolt.balanceOf(STAKER3);
 
-        assertEq(balanceStaker3AfterWithdraw, balanceStaker3BeforeWithdraw + staker3Reward, "STAKER3 balance is wrong");
+        assertEq(
+            balanceStaker3AfterWithdraw,
+            balanceStaker3BeforeWithdraw + staker3Reward,
+            "STAKER3 balance is wrong"
+        );
+    }
+
+    function testFail_WithdrawMoreTokensThanAllowed() public {
+        uint256 amountStaker1 = 100_000_000;
+        int256 rewardFromOracle = 100_000;
+        mint(STAKER1, amountStaker1);
+        stakingContract.createPool(50, 50, GAME, CHALLENGE, USER_ID);
+        oracle.updatePool(pid, 0, true);
+        stakeToken(STAKER1, amountStaker1);
+        oracle.updatePool(pid, rewardFromOracle, true);
+        vm.prank(STAKER1);
+        stakingContract.withdrawPartial(pid, amountStaker1 + 900_000);
+    }
+
+    function test_stakerWithdrawsPartOfTokens() public {
+        uint256 amountStaker1 = 100_000_000;
+        int256 rewardFromOracle = 100_000;
+        mint(STAKER1, amountStaker1);
+        stakingContract.createPool(50, 50, GAME, CHALLENGE, USER_ID);
+        oracle.updatePool(pid, 0, true);
+        stakeToken(STAKER1, amountStaker1);
+        oracle.updatePool(pid, rewardFromOracle, true);
+        uint256 balanceBeforeWithdraw = bolt.balanceOf(STAKER1);
+        uint256 sharesBefore = stakingContract.getPool(pid).totalShares;
+        vm.prank(STAKER1);
+        stakingContract.withdrawPartial(pid, amountStaker1 / 2);
+        uint256 balanceAfterWithdraw = bolt.balanceOf(STAKER1);
+        uint256 sharesAfter = stakingContract.getPool(pid).totalShares;
+        assertEq(balanceAfterWithdraw > balanceBeforeWithdraw, true, "Withdraw amount not right");
+        assertEq(
+            stakingContract.getPool(pid).totalStaked,
+            amountStaker1 / 2 + uint256(rewardFromOracle),
+            "Total staked wrong"
+        );
+        assertEq(
+            sharesBefore > sharesAfter,
+            true,
+            "Total shares wrong"
+        );
     }
 
     function mint(address _receiver, uint256 _amount) private {
