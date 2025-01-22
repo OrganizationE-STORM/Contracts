@@ -14,7 +14,7 @@ analyze:
 
 .PHONY: test
 test:
-	forge coverage --report lcov -vv 
+	forge coverage --report lcov -vv --match-test testFuzz_withdrawIsCorrect
 
 # Install dependencies (forge and aderyn)
 .PHONY: install

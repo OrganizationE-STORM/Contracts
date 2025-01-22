@@ -46,17 +46,14 @@ contract WithdrawTest is Test {
         uint256 _amountStaker3
     ) public {
         vm.assume(
-            _amountStaker1 > 0 && _amountStaker1 < 5_000_000_000_000_000
+            _amountStaker1 > 10 && _amountStaker1 < 5_000_000_000_000_000
         );
+        vm.assume(_amountStaker2 > 0 && _amountStaker2 < 5_000_000_000_000_000);
+        vm.assume(_amountStaker3 > 0 && _amountStaker3 < 5_000_000_000_000_000);
         vm.assume(
-            _rewardFromOracle > 0 &&
+            _rewardFromOracle >
+                -int256(_amountStaker1 + _amountStaker2 + _amountStaker3) &&
                 _rewardFromOracle < 2_200_000_000
-        );
-        vm.assume(
-            _amountStaker2 > 0 && _amountStaker2 < 5_000_000_000_000_000
-        );
-        vm.assume(
-            _amountStaker3 > 0 && _amountStaker3 < 5_000_000_000_000_000
         );
 
         mint(STAKER1, _amountStaker1);
@@ -68,20 +65,71 @@ contract WithdrawTest is Test {
         oracle.updatePool(pid, 0, true);
 
         stakeToken(STAKER1, _amountStaker1);
+        console.log(stakingContract.getPool(pid).totalStaked);
         stakeToken(STAKER2, _amountStaker2);
-        stakeToken(STAKER3, _amountStaker3);        
+        console.log(stakingContract.getPool(pid).totalStaked);
+        stakeToken(STAKER3, _amountStaker3);
+        console.log(stakingContract.getPool(pid).totalStaked);
+
+        assertEq(
+            stakingContract.getPool(pid).totalStaked,
+            _amountStaker2 + _amountStaker1 + _amountStaker3,
+            "Total staked is not updated correctly"
+        );
 
         oracle.updatePool(pid, _rewardFromOracle, true);
 
-        vm.prank(STAKER3);
-        (uint256 staker3Reward, uint256 fee) = stakingContract.previewUnstakeReward(pid);
-        uint256 balanceStaker3BeforeWithdraw = bolt.balanceOf(STAKER3);
+        uint256 totalStakedByStaker1 = stakingContract.convertToAssets(
+            stakingContract.sharesByAddress(pid, STAKER1),
+            pid
+        );
+
+        console.log("totalStakedByStaker1", totalStakedByStaker1);
+
+        vm.prank(STAKER1);
+        stakingContract.withdraw(pid, totalStakedByStaker1);
+        console.log(stakingContract.getPool(pid).totalStaked);
+        
+        uint256 totalStakedByStaker2 = stakingContract.convertToAssets(
+            stakingContract.sharesByAddress(pid, STAKER2),
+            pid
+        );
+        
+        
+        vm.prank(STAKER2);
+        stakingContract.withdraw(pid, totalStakedByStaker2);
+
+        StakingContract.PoolInfo memory poolInfo = stakingContract.getPool(pid);
+        console.log("totalStakedByStaker2", totalStakedByStaker2, stakingContract.sharesByAddress(pid, STAKER2), poolInfo.totalShares);
+        
+        uint256 totalStakedByStaker3 = stakingContract.convertToAssets(
+            stakingContract.sharesByAddress(pid, STAKER3),
+            pid
+        );
+        console.log("totalStakedByStaker3", totalStakedByStaker3, stakingContract.sharesByAddress(pid, STAKER3), poolInfo.totalShares);
 
         vm.prank(STAKER3);
-        stakingContract.withdraw(pid);
-        uint256 balanceStaker3AfterWithdraw = bolt.balanceOf(STAKER3);
-
-        assertEq(balanceStaker3AfterWithdraw, balanceStaker3BeforeWithdraw + staker3Reward, "STAKER3 balance is wrong");
+        stakingContract.withdraw(pid, totalStakedByStaker3);
+        console.log(stakingContract.getPool(pid).totalStaked);
+        
+        assertEq(
+            stakingContract.sharesByAddress(pid, STAKER1),
+            0,
+            "STAKER1 shares should be 0 after withdraw"
+        );
+        assertEq(
+            stakingContract.sharesByAddress(pid, STAKER2),
+            0,
+            "STAKER2 shares should be 0 after withdraw"
+        );
+        assertEq(
+            stakingContract.sharesByAddress(pid, STAKER3),
+            0,
+            "STAKER3 shares should be 0 after withdraw"
+        );
+        
+        assertEq(stakingContract.getPool(pid).totalShares, 0);
+        assertEq(stakingContract.getPool(pid).totalStaked, 0);
     }
 
     function mint(address _receiver, uint256 _amount) private {

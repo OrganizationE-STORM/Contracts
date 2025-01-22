@@ -7,8 +7,11 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {EStormOracle} from "./EStormOracle.sol";
 import {Bolt} from "./Bolt.sol";
 import {console} from "forge-std/console.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 contract StakingContract is Pausable, Ownable {
+    using Math for uint256;
+
     event PoolCreated(
         string gameID,
         string challengeID,
@@ -35,7 +38,7 @@ contract StakingContract is Pausable, Ownable {
     mapping(string => bool) public usersRegistered;
     mapping(bytes32 => mapping(address => uint256)) public sharesByAddress;
 
-    uint256 public constant SCALE = 1e28;
+    uint256 public constant SCALE = 1e30;
     uint256 public constant INITIAL_SHARES = 100_000 * SCALE;
     uint8 public feePerc = 2;
 
@@ -96,82 +99,109 @@ contract StakingContract is Pausable, Ownable {
             .getPool(_pid);
         require(isActive, "Pool not active");
 
+        uint256 shares = previewDeposit(_amount, _pid);
+
         if (shouldCountReward) consumeReward(rewardAmount, _pid);
-        updatePoolInfo(_pid, _amount);
+
+        updatePoolInfo(_pid, _amount, shares);
 
         bolt.transferFrom(_msgSender(), address(this), _amount);
         emit Deposit(_msgSender(), _amount, _pid);
     }
 
-    function updatePoolInfo(bytes32 _pid, uint256 _amount) private {
-        PoolInfo storage pool = poolInfo[_pid];
-        uint256 totalStakedTmp = pool.totalStaked;
-        uint256 totalSharesTmp = pool.totalShares;
-
-        if (pool.totalShares == 0) {
-            pool.totalStaked += _amount;
-            pool.totalShares = INITIAL_SHARES / SCALE;
-            sharesByAddress[_pid][_msgSender()] = INITIAL_SHARES / SCALE;
-        } else {
-            pool.totalStaked += _amount;
-
-            pool.totalShares =
-                (((totalSharesTmp * SCALE) / totalStakedTmp) *
-                    pool.totalStaked) /
-                SCALE;
-
-            sharesByAddress[_pid][_msgSender()] +=
-                pool.totalShares -
-                totalSharesTmp;
-        }
-    }
-
-    function withdraw(
-        bytes32 _pid
-    ) external returns (uint256 _stakerReward, uint256 _fee) {
-        return _withdraw(_pid, 0, false);
-    }
-
-    function withdrawPartial(
-        bytes32 _pid,
-        uint256 _amount
-    ) external returns (uint256 _stakerReward, uint256 _fee) {
-        require(_amount > 0, "Amount must be greater than 0");
-        return _withdraw(_pid, _amount, true);
-    }
-
-    function _withdraw(
+    function updatePoolInfo(
         bytes32 _pid,
         uint256 _amount,
-        bool isPartial
-    ) private returns (uint256 _stakerReward, uint256 _fee) {
+        uint256 _shares
+    ) private {
+        PoolInfo storage pool = poolInfo[_pid];
+
+        pool.totalStaked += _amount;
+        pool.totalShares += _shares;
+
+        sharesByAddress[_pid][_msgSender()] += _shares;
+    }
+
+    function withdraw(bytes32 _pid, uint256 _amount) public {
         (bool isActive, int256 rewardAmount, bool shouldCountReward) = oracle
             .getPool(_pid);
         require(isActive, "Pool not active");
 
-        if (isPartial) {
-            (uint256 _rewardToken, , ) = getUserReward(_pid, _msgSender());
-            require(_amount <= _rewardToken, "Amount exceeds reward amount");
-        }
+        uint256 shares = previewWithdraw(_amount, _pid);
+        
+       
+        uint256 fee = previewFee(_amount, _pid);
 
         if (shouldCountReward) consumeReward(rewardAmount, _pid);
 
-        uint256 fee;
-        uint256 reward;
+        require(
+            shares <= sharesByAddress[_pid][_msgSender()],
+            "Shares amount not valid"
+        );
 
-        if (isPartial) {
-            fee = updatePoolInfoAfterWithdrawWithAmount(_pid, _amount);
-            reward = _amount;
+        updatePoolInfoAfterWithdraw(_pid, _amount, shares, fee);
+        safeEBoltTransfer(devaddr, fee);
+        safeEBoltTransfer(_msgSender(), _amount);
+        emit Withdraw(_msgSender(), _amount, fee, _pid);
+    }
+
+    function convertToAssets(
+        uint256 _shares,
+        bytes32 _pid
+    ) public view returns (uint256) {
+        (, int256 rewardAmount, ) = oracle.getPool(_pid);
+
+        PoolInfo memory pool = poolInfo[_pid];
+        uint256 tokens = pool.totalStaked;
+
+        if (rewardAmount < 0) {
+            tokens -= uint256(-rewardAmount);
         } else {
-            (fee, reward) = updatePoolInfoAfterWithdraw(_pid);
+            tokens += uint256(rewardAmount);
         }
 
-        safeEBoltTransfer(devaddr, fee);
-        safeEBoltTransfer(_msgSender(), reward);
+        return
+            _shares.mulDiv(
+                tokens + 1,
+                pool.totalShares + 10 ** bolt.decimals(),
+                Math.Rounding.Ceil
+            );
+    }
 
-        emit Withdraw(_msgSender(), reward, fee, _pid);
+    function _convertToShares(
+        uint256 _amount,
+        bytes32 _pid,
+        Math.Rounding rounding
+    ) public view returns (uint256) {
+        (, int256 rewardAmount, ) = oracle.getPool(_pid);
 
-        return (reward, fee);
+        PoolInfo memory pool = poolInfo[_pid];
+        uint256 tokens = pool.totalStaked;
+
+        if (rewardAmount < 0) {
+            tokens -= uint256(-rewardAmount);
+        } else {
+            tokens += uint256(rewardAmount);
+        }
+
+        return
+            _amount.mulDiv(
+                pool.totalShares + 10 ** bolt.decimals(),
+                tokens + 1,
+                rounding
+            );
+    }
+
+    function previewWithdraw(
+        uint256 _amount,
+        bytes32 _pid
+    ) public view returns (uint256) {
+        uint256 shares = _convertToShares(_amount, _pid, Math.Rounding.Ceil);
+
+         if(shares > sharesByAddress[_pid][_msgSender()]) 
+            shares = sharesByAddress[_pid][_msgSender()];
+
+        return shares;
     }
 
     //TODO: add the check on the total supply if rewardAmount is positive
@@ -193,108 +223,30 @@ contract StakingContract is Pausable, Ownable {
     }
 
     function updatePoolInfoAfterWithdraw(
-        bytes32 _pid
-    ) private returns (uint256 _feeDevAddr, uint256 _reward) {
-        PoolInfo storage pool = poolInfo[_pid];
-
-        (
-            uint256 _rewardToken,
-            uint256 _fee,
-            uint256 _currentShares
-        ) = getUserReward(_pid, _msgSender());
-
-        pool.totalStaked -= _rewardToken;
-        _rewardToken -= _fee;
-
-        pool.totalShares -= _currentShares;
-        sharesByAddress[_pid][_msgSender()] = 0;
-
-        return (_fee, _rewardToken);
-    }
-
-    function updatePoolInfoAfterWithdrawWithAmount(
         bytes32 _pid,
-        uint256 _amount
-    ) private returns (uint256) {
+        uint256 _amount,
+        uint256 _shares,
+        uint256 _fee
+    ) private {
         PoolInfo storage pool = poolInfo[_pid];
-        (, , uint256 _shares) = getUserReward(_pid, _msgSender());
-
-        uint256 sharesToWithdraw = calculateSharesGivenTokens(_amount, _pid);
-        uint256 fee = (_amount * feePerc * SCALE) / (100 * SCALE);
-
-        require(sharesToWithdraw <= _shares, "Shares amount not valid");
-
         pool.totalStaked -= _amount;
-        _amount -= fee;
-
+        _amount -= _fee;
         pool.totalShares -= _shares;
         sharesByAddress[_pid][_msgSender()] -= _shares;
-
-        return fee;
     }
 
-    function calculateSharesGivenTokens(
+    function previewDeposit(
         uint256 _amount,
         bytes32 _pid
-    ) private view returns (uint256) {
-        PoolInfo storage pool = poolInfo[_pid];
-        uint256 totalStakedTmp = pool.totalStaked;
-        uint256 totalSharesTmp = pool.totalShares;
-
-        if (totalStakedTmp > totalSharesTmp) {
-            uint256 ratio = (((totalStakedTmp * SCALE) / totalSharesTmp) /
-                SCALE);
-            return ((_amount * SCALE) / ratio) / SCALE;
-        } else {
-            uint256 ratio = (((totalSharesTmp * SCALE) / totalStakedTmp) /
-                SCALE);
-            return _amount * ratio;
-        }
+    ) public view returns (uint256) {
+        return _convertToShares(_amount, _pid, Math.Rounding.Floor);
     }
 
-    function getUserReward(
-        bytes32 _pid,
-        address _addr
-    )
-        private
-        view
-        returns (uint256 _rewardToken, uint256 _fee, uint256 _currentShares)
-    {
-        PoolInfo storage pool = poolInfo[_pid];
-
-        uint256 currentShares = sharesByAddress[_pid][_addr];
-        uint256 reward = (currentShares * pool.totalStaked * SCALE) /
-            (pool.totalShares * SCALE);
-        uint256 fee = (reward * feePerc * SCALE) / (100 * SCALE);
-
-        return (reward, fee, currentShares);
-    }
-
-    /**
-        this function can be used to check the amount of tokens that the user will receive when the staker withdraws
-     */
-    function previewUnstakeReward(
+    function previewFee(
+        uint256 _amount,
         bytes32 _pid
-    ) external view returns (uint256 _reward, uint256 _fee) {
-        PoolInfo memory pool = poolInfo[_pid];
-
-        (bool isActive, int256 rewardAmount, bool shouldCountReward) = oracle
-            .getPool(_pid);
-
-        if (shouldCountReward) {
-            if (rewardAmount > 0) pool.totalStaked += uint256(rewardAmount);
-            else if (rewardAmount < 0) {
-                uint256 absRewardAmount = uint256(-rewardAmount);
-                pool.totalStaked -= absRewardAmount;
-            }
-        }
-
-        uint256 currentShares = sharesByAddress[_pid][_msgSender()];
-        uint256 reward = (currentShares * pool.totalStaked * SCALE) /
-            (pool.totalShares * SCALE);
-        uint256 fee = (reward * feePerc * SCALE) / (100 * SCALE);
-        reward -= fee;
-        return (reward, fee);
+    ) public view returns (uint256) {
+        return _amount.mulDiv(feePerc, 100, Math.Rounding.Ceil);
     }
 
     function safeEBoltTransfer(address _to, uint256 _amount) internal {

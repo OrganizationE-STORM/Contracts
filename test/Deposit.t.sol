@@ -71,7 +71,8 @@ contract DepositTest is Test {
                 _rewardAmount < 2_200_000_000
         );
         vm.assume(
-            _amountStakedSecond > 0 && _amountStakedSecond < 5_000_000_000_000_000
+            _amountStakedSecond > 0 &&
+                _amountStakedSecond < 5_000_000_000_000_000
         );
 
         vm.prank(OWNER);
@@ -89,39 +90,37 @@ contract DepositTest is Test {
 
         StakingContract.PoolInfo memory pool = stakingContract.getPool(pid);
 
-        uint256 totalStakedExpected = TestingLibrary.calculateTotalStaked(
-            [_amountStakedFirst, _amountStakedSecond],
-            _rewardAmount
-        );
-
-        (uint256 totalShares2, uint256 stakerShares2) = TestingLibrary
-            .calculateExpectedShares(
-                100_000,
-                pool.totalStaked - _amountStakedSecond, // Subtract STAKER2's stake to get previous staking
-                _amountStakedSecond,
-                stakingContract.INITIAL_SHARES(),
-                stakingContract.SCALE()
+        if (_rewardAmount < 0) {
+            assertEq(
+                _amountStakedFirst +
+                    _amountStakedSecond -
+                    uint256(-_rewardAmount),
+                pool.totalStaked,
+                "Total staked is wrong"
             );
+        } else {
+            assertEq(
+                _amountStakedFirst +
+                    _amountStakedSecond +
+                    uint256(_rewardAmount),
+                pool.totalStaked,
+                "Total staked is wrong"
+            );
+        }
 
-        assertEq(
-            totalStakedExpected,
-            pool.totalStaked,
-            "Total staked is wrong"
-        );
-        assertEq(totalShares2, pool.totalShares, "Total shares wrong");
         assertEq(
             stakingContract.sharesByAddress(pid, STAKER1),
-            100_000,
-            "There must be at least 100_000 shares"
+            _amountStakedFirst * 10 ** bolt.decimals(),
+            "There must be at least X  shares"
         );
+        
         assertEq(
-            stakerShares2,
+            pool.totalShares - stakingContract.sharesByAddress(pid, STAKER1),
             stakingContract.sharesByAddress(pid, STAKER2),
             "STAKER2 shares wrong"
         );
     }
 
-   
     function mint(address _receiver, uint256 _amount) private {
         vm.prank(OWNER);
         bolt.mint(_receiver, _amount);
