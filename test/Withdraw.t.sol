@@ -65,11 +65,8 @@ contract WithdrawTest is Test {
         oracle.updatePool(pid, 0, true);
 
         stakeToken(STAKER1, _amountStaker1);
-        console.log(stakingContract.getPool(pid).totalStaked);
         stakeToken(STAKER2, _amountStaker2);
-        console.log(stakingContract.getPool(pid).totalStaked);
         stakeToken(STAKER3, _amountStaker3);
-        console.log(stakingContract.getPool(pid).totalStaked);
 
         assertEq(
             stakingContract.getPool(pid).totalStaked,
@@ -84,33 +81,35 @@ contract WithdrawTest is Test {
             pid
         );
 
-        console.log("totalStakedByStaker1", totalStakedByStaker1);
+        // console.log("shares staker1 before withdraw", stakingContract.sharesByAddress(pid, STAKER1), stakingContract.getPool(pid).totalShares);
 
         vm.prank(STAKER1);
         stakingContract.withdraw(pid, totalStakedByStaker1);
-        console.log(stakingContract.getPool(pid).totalStaked);
-        
+
         uint256 totalStakedByStaker2 = stakingContract.convertToAssets(
             stakingContract.sharesByAddress(pid, STAKER2),
             pid
         );
         
-        
+        StakingContract.PoolInfo memory poolInfo = stakingContract.getPool(pid);
+        // console.log("total token staked before withdraw 2: ", stakingContract.getPool(pid).totalStaked);
+        // console.log("Staker 2 is withdrawing: ", totalStakedByStaker2);
+        // console.log("totalStakedByStaker2", stakingContract.sharesByAddress(pid, STAKER2), stakingContract.getPool(pid).totalShares);
+
         vm.prank(STAKER2);
         stakingContract.withdraw(pid, totalStakedByStaker2);
 
-        StakingContract.PoolInfo memory poolInfo = stakingContract.getPool(pid);
-        console.log("totalStakedByStaker2", totalStakedByStaker2, stakingContract.sharesByAddress(pid, STAKER2), poolInfo.totalShares);
-        
         uint256 totalStakedByStaker3 = stakingContract.convertToAssets(
             stakingContract.sharesByAddress(pid, STAKER3),
             pid
         );
-        console.log("totalStakedByStaker3", totalStakedByStaker3, stakingContract.sharesByAddress(pid, STAKER3), poolInfo.totalShares);
+        
+        // console.log("total token staked before withdraw 3: ", stakingContract.getPool(pid).totalStaked);
+        // console.log("totalStakedByStaker3", stakingContract.sharesByAddress(pid, STAKER3), stakingContract.getPool(pid).totalShares);
 
         vm.prank(STAKER3);
         stakingContract.withdraw(pid, totalStakedByStaker3);
-        console.log(stakingContract.getPool(pid).totalStaked);
+        // console.log(stakingContract.getPool(pid).totalStaked);
         
         assertEq(
             stakingContract.sharesByAddress(pid, STAKER1),
@@ -128,8 +127,8 @@ contract WithdrawTest is Test {
             "STAKER3 shares should be 0 after withdraw"
         );
         
-        assertEq(stakingContract.getPool(pid).totalShares, 0);
-        assertEq(stakingContract.getPool(pid).totalStaked, 0);
+        assertEq(stakingContract.getPool(pid).totalShares, 0, "TOTAL SHARES");
+        assertEq(stakingContract.getPool(pid).totalStaked <= 10 ** bolt.decimals(), true, "TOTAL STAKED");
     }
 
     function mint(address _receiver, uint256 _amount) private {

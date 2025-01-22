@@ -29,6 +29,7 @@ contract EStormOracle is Ownable {
   function lockReward(bytes32 _pid) public {
     require(msg.sender == stakingContract);
     infoByPID[_pid].shouldCountReward = false;
+    infoByPID[_pid].dept = 0;
   }
 
   function setStakingContract(address _addr) public onlyOwner {
