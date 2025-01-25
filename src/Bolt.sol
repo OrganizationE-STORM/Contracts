@@ -9,16 +9,53 @@ import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20P
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ERC20Capped} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Capped.sol";
 import {console} from "forge-std/console.sol";
-
-contract Bolt is ERC20, ERC20Burnable, ERC20Pausable, Ownable, ERC20Permit, ERC20Capped {
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {IBolt} from "./interfaces/IBolt.sol";
+contract Bolt is
+    ERC20,
+    ERC20Burnable,
+    ERC20Pausable,
+    Ownable,
+    ERC20Permit,
+    ERC20Capped,
+    IBolt
+{
     address stakingContract;
 
     uint256 public constant MAX_SUPPLY = 1e18;
+    mapping(bytes32 => bool) public hashRegistry;
+    address messageSigner;
 
     constructor(
-        address _initialOwner
-    ) ERC20("Bolt", "BLT") Ownable(_initialOwner) ERC20Permit("Bolt") ERC20Capped(MAX_SUPPLY) {
-        _mint(address(this), 2500000 * 10 ** decimals());
+        address _initialOwner,
+        address _messageSigner
+    )
+        ERC20("Bolt", "BLT")
+        Ownable(_initialOwner)
+        ERC20Permit("Bolt")
+        ERC20Capped(MAX_SUPPLY)
+    {
+        _mint(address(this), 15_000_000_000 * 10 ** decimals());
+        messageSigner = _messageSigner;
+    }
+    /**
+     * See {IBolt-mintWithMessage}.
+     */
+    function mintWithMessage(
+        bytes32 _hash,
+        uint256 _amount,
+        uint256 _nonce,
+        bytes memory _signature
+    ) public {
+        //TODO: add the rebuilding of the original message
+        require(!hashRegistry[_hash], "Hash already used");
+        require(
+            ECDSA.recover(_hash, _signature) == messageSigner,
+            "Unauthorized mint"
+        );
+        _mint(_msgSender(), _amount);
+        hashRegistry[_hash] = true;
+        emit MintWithMessage(_msgSender(), _hash, _signature, _amount, _nonce);
     }
 
     function pause() public onlyOwner {
@@ -35,20 +72,23 @@ contract Bolt is ERC20, ERC20Burnable, ERC20Pausable, Ownable, ERC20Permit, ERC2
 
     function decimals() public view virtual override returns (uint8) {
         return 6;
-    }      
+    }
     function safeEBoltTransfer(address _to, uint256 _amount) public {
-        require(msg.sender == stakingContract, "Only staking contract can call this");
+        require(
+            msg.sender == stakingContract,
+            "Only staking contract can call this"
+        );
 
         uint256 eBoltsBalance = balanceOf(address(this));
-        
-        if(_amount > eBoltsBalance) {
+
+        if (_amount > eBoltsBalance) {
             _transfer(address(this), _to, eBoltsBalance);
         } else {
             _transfer(address(this), _to, _amount);
         }
     }
 
-    function setStakingContract(address _addr) public onlyOwner() {
+    function setStakingContract(address _addr) public onlyOwner {
         stakingContract = _addr;
     }
 

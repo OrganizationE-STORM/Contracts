@@ -40,7 +40,7 @@ import {Math} from "../../../utils/math/Math.sol";
  * to the vault. Also, if the vault experiences losses, the users try to exit the vault, the virtual shares and assets
  * will cause the first user to exit to experience reduced losses in detriment to the last users that will experience
  * bigger losses. Developers willing to revert back to the pre-v4.9 behavior just need to override the
- * `_convertToShares` and `_convertToAssets` functions.
+ * `convertToShares` and `_convertToAssets` functions.
  *
  * To learn more, check out our xref:ROOT:erc4626.adoc[ERC-4626 guide].
  * ====
@@ -119,7 +119,7 @@ abstract contract ERC4626 is ERC20, IERC4626 {
 
     /** @dev See {IERC4626-convertToShares}. */
     function convertToShares(uint256 assets) public view virtual returns (uint256) {
-        return _convertToShares(assets, Math.Rounding.Floor);
+        return convertToShares(assets, Math.Rounding.Floor);
     }
 
     /** @dev See {IERC4626-convertToAssets}. */
@@ -149,7 +149,7 @@ abstract contract ERC4626 is ERC20, IERC4626 {
 
     /** @dev See {IERC4626-previewDeposit}. */
     function previewDeposit(uint256 assets) public view virtual returns (uint256) {
-        return _convertToShares(assets, Math.Rounding.Floor);
+        return convertToShares(assets, Math.Rounding.Floor);
     }
 
     /** @dev See {IERC4626-previewMint}. */
@@ -159,7 +159,7 @@ abstract contract ERC4626 is ERC20, IERC4626 {
 
     /** @dev See {IERC4626-previewWithdraw}. */
     function previewWithdraw(uint256 assets) public view virtual returns (uint256) {
-        return _convertToShares(assets, Math.Rounding.Ceil);
+        return convertToShares(assets, Math.Rounding.Ceil);
     }
 
     /** @dev See {IERC4626-previewRedeem}. */
@@ -222,7 +222,7 @@ abstract contract ERC4626 is ERC20, IERC4626 {
     /**
      * @dev Internal conversion function (from assets to shares) with support for rounding direction.
      */
-    function _convertToShares(uint256 assets, Math.Rounding rounding) internal view virtual returns (uint256) {
+    function convertToShares(uint256 assets, Math.Rounding rounding) internal view virtual returns (uint256) {
         return assets.mulDiv(totalSupply() + 10 ** _decimalsOffset(), totalAssets() + 1, rounding);
     }
 

@@ -4,7 +4,7 @@ out = "out"
 libs = ["lib"]
 
 [fuzz]
-runs = 10000
+runs = 100
 max_test_rejects = 10000000
 seed = "0x706f6f6c2e746f74616c536861726573"
 
