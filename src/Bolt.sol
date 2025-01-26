@@ -42,20 +42,22 @@ contract Bolt is
      * See {IBolt-mintWithMessage}.
      */
     function mintWithMessage(
-        bytes32 _hash,
         uint256 _amount,
         uint256 _nonce,
         bytes memory _signature
     ) public {
-        //TODO: add the rebuilding of the original message
-        require(!hashRegistry[_hash], "Hash already used");
-        require(
-            ECDSA.recover(_hash, _signature) == messageSigner,
-            "Unauthorized mint"
+        bytes32 originalHash = keccak256(
+            abi.encodePacked(_nonce, msg.sender, _amount)
         );
+        require(
+            ECDSA.recover(originalHash, _signature) == owner(),
+            "This message was not signed by the owner of the contract"
+        );
+        require(!hashRegistry[originalHash], "Hash already used");
+        
         _mint(_msgSender(), _amount);
-        hashRegistry[_hash] = true;
-        emit MintWithMessage(_msgSender(), _hash, _signature, _amount, _nonce);
+        hashRegistry[originalHash] = true;
+        emit MintWithMessage(_msgSender(), originalHash, _signature, _amount, _nonce);
     }
 
     function pause() public onlyOwner {
