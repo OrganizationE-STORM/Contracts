@@ -97,7 +97,7 @@ contract StakingContract is IStakingContract, Pausable, Ownable {
             shares <= sharesByAddress[_pid][_msgSender()],
             "Shares amount not valid"
         );
-
+        //todo: comment
         if (shouldUpdateDept) updateDept(deptAmount, _pid);
 
         PoolInfo storage pool = poolInfo[_pid];
