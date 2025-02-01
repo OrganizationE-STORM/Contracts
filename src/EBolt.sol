@@ -10,15 +10,14 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ERC20Capped} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Capped.sol";
 import {console} from "forge-std/console.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {IBolt} from "./interfaces/IBolt.sol";
-contract Bolt is
+import {IEBolt} from "./interfaces/IEBolt.sol";
+contract EBolt is
     ERC20,
     ERC20Burnable,
-    ERC20Pausable,
     Ownable,
     ERC20Permit,
     ERC20Capped,
-    IBolt
+    IEBolt
 {
     address stakingContract;
 
@@ -28,14 +27,15 @@ contract Bolt is
 
     constructor(
         address _initialOwner,
-        address _messageSigner
+        address _messageSigner,
+        address _treasury
     )
-        ERC20("Bolt", "BLT")
+        ERC20("eBolt", "EBOLT")
         Ownable(_initialOwner)
-        ERC20Permit("Bolt")
+        ERC20Permit("eBolt")
         ERC20Capped(MAX_SUPPLY)
     {
-        _mint(address(this), 15_000_000_000 * 10 ** decimals());
+        _mint(_treasury, 15_000_000_000 * 10 ** decimals());
         messageSigner = _messageSigner;
     }
     /**
@@ -45,7 +45,7 @@ contract Bolt is
         uint256 _amount,
         uint256 _nonce,
         bytes memory _signature
-    ) public {
+    ) external {
         bytes32 originalHash = keccak256(
             abi.encodePacked(_nonce, msg.sender, _amount)
         );
@@ -58,14 +58,6 @@ contract Bolt is
         _mint(_msgSender(), _amount);
         hashRegistry[originalHash] = true;
         emit MintWithMessage(_msgSender(), originalHash, _signature, _amount, _nonce);
-    }
-
-    function pause() public onlyOwner {
-        _pause();
-    }
-
-    function unpause() public onlyOwner {
-        _unpause();
     }
 
     function mint(address to, uint256 amount) public onlyOwner {
@@ -90,7 +82,7 @@ contract Bolt is
         }
     }
 
-    function setStakingContract(address _addr) public onlyOwner {
+    function setStakingContract(address _addr) external onlyOwner {
         stakingContract = _addr;
     }
 
@@ -100,7 +92,7 @@ contract Bolt is
         address from,
         address to,
         uint256 value
-    ) internal override(ERC20, ERC20Pausable, ERC20Capped) {
+    ) internal override(ERC20, ERC20Capped) {
         super._update(from, to, value);
     }
 }

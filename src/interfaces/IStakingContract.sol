@@ -3,6 +3,13 @@ pragma solidity ^0.8.22;
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 interface IStakingContract {
+    struct PoolInfo {
+        bytes32 id;
+        string userID;
+        uint256 totalStaked;
+        uint256 totalShares;
+    }
+     
     event PoolCreated(
         string gameID,
         string challengeID,
@@ -43,4 +50,6 @@ interface IStakingContract {
         uint256 _amount,
         bytes32 _pid
     ) external view returns (uint256);
+
+    function getPool(bytes32 _pid) external view returns(PoolInfo memory);
 }

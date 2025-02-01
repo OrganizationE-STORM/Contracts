@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
-import {Bolt} from "../../src/Bolt.sol";
+import {EBolt} from "../../src/EBolt.sol";
 import {StakingContract} from "../../src/StakingContract.sol";
 import {EStormOracle} from "../../src/EStormOracle.sol";
 import {console} from "forge-std/console.sol";
@@ -16,11 +16,11 @@ contract WithdrawRevertsTest is Test {
     address constant STAKER1 = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
     address constant STAKER2 = 0x976EA74026E726554dB657fA54763abd0C3a0aa9;
     address constant STAKER3 = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
-    address constant DEVADDR = 0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc;
+    address constant TREASURY = 0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc;
     address constant SIGNER = 0x14dC79964da2C08b23698B3D3cc7Ca32193d9955;
 
     // Test Variables
-    Bolt internal bolt;
+    EBolt internal bolt;
     StakingContract internal stakingContract;
     EStormOracle internal oracle;
 
@@ -28,14 +28,17 @@ contract WithdrawRevertsTest is Test {
 
     /// @notice Set up shared state for all tests
     function setUp() public {
-        bolt = new Bolt(OWNER, SIGNER);
+        bolt = new EBolt(OWNER, SIGNER, TREASURY);
         oracle = new EStormOracle();
         pid = keccak256(abi.encode(GAME, CHALLENGE, USER_ID));
-        stakingContract = new StakingContract(bolt, oracle, DEVADDR);
+        stakingContract = new StakingContract(bolt, oracle, TREASURY);
         stakingContract.addGame(GAME);
         vm.prank(OWNER);
         bolt.setStakingContract(address(stakingContract));
         oracle.setStakingContract(address(stakingContract));
+
+        vm.prank(TREASURY);
+        bolt.approve(address(stakingContract), type(uint256).max);
     }
 
     function testFail_stakerTriesToWithdrawMoreThanStakedAmount() public {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-interface IBolt {
+interface IEBolt {
     /**
      * @dev Emitted when `amount` tokens are created using the function {mintWithMessage}
      */
@@ -23,7 +23,6 @@ interface IBolt {
      * Emits a {MintWithMessage} event.
      */
     function mintWithMessage(
-        bytes32 _hash,
         uint256 _amount,
         uint256 _nonce,
         bytes memory _signature

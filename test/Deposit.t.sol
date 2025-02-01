@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
-import {Bolt} from "../src/Bolt.sol";
+import {EBolt} from "../src/EBolt.sol";
 import {StakingContract} from "../src/StakingContract.sol";
 import {EStormOracle} from "../src/EStormOracle.sol";
 import {console} from "forge-std/console.sol";
@@ -16,11 +16,11 @@ contract DepositTest is Test {
     address constant STAKER1 = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
     address constant STAKER2 = 0x976EA74026E726554dB657fA54763abd0C3a0aa9;
     address constant STAKER3 = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
-    address constant DEVADDR = 0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc;
+    address constant TREASURY = 0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc;
     address constant SIGNER = 0x14dC79964da2C08b23698B3D3cc7Ca32193d9955;
 
     // Test Variables
-    Bolt internal bolt;
+    EBolt internal bolt;
     StakingContract internal stakingContract;
     EStormOracle internal oracle;
 
@@ -28,14 +28,20 @@ contract DepositTest is Test {
 
     /// @notice Set up shared state for all tests
     function setUp() public {
-        bolt = new Bolt(OWNER, SIGNER);
+        bolt = new EBolt(OWNER, SIGNER, TREASURY);
         oracle = new EStormOracle();
         pid = keccak256(abi.encode(GAME, CHALLENGE, USER_ID));
-        stakingContract = new StakingContract(bolt, oracle, DEVADDR);
+        stakingContract = new StakingContract(bolt, oracle, TREASURY);
         stakingContract.addGame(GAME);
         vm.prank(OWNER);
         bolt.setStakingContract(address(stakingContract));
         oracle.setStakingContract(address(stakingContract));
+
+        vm.prank(TREASURY);
+        bolt.approve(address(stakingContract), type(uint256).max);
+
+        vm.prank(OWNER);
+        bolt.mint(TREASURY, 100_000_000_000);
     }
 
     /// @notice Test that a pool is successfully created
@@ -52,7 +58,7 @@ contract DepositTest is Test {
     }
 
     function testFuzz_DepositWithMultipleStakers(
-        int256 _rewardAmount,
+        int256 _debtAmount,
         uint256 _amountStakedFirst,
         uint256 _amountStakedSecond
     ) public {
@@ -61,8 +67,8 @@ contract DepositTest is Test {
             _amountStakedFirst > 0 && _amountStakedFirst < 5_000_000_000_000_000
         );
         vm.assume(
-            _rewardAmount > -int256(_amountStakedFirst) &&
-                _rewardAmount < 2_200_000_000
+            _debtAmount > -int256(_amountStakedFirst) &&
+                _debtAmount < 2_200_000_000
         );
         vm.assume(
             _amountStakedSecond > 0 &&
@@ -79,16 +85,16 @@ contract DepositTest is Test {
         oracle.updatePool(pid, 0, true);
 
         stakeToken(STAKER1, _amountStakedFirst);
-        oracle.updatePool(pid, _rewardAmount, true);
+        oracle.updatePool(pid, _debtAmount, true);
         stakeToken(STAKER2, _amountStakedSecond);
 
         StakingContract.PoolInfo memory pool = stakingContract.getPool(pid);
 
-        if (_rewardAmount < 0) {
+        if (_debtAmount < 0) {
             assertEq(
                 _amountStakedFirst +
                     _amountStakedSecond -
-                    uint256(-_rewardAmount),
+                    uint256(-_debtAmount),
                 pool.totalStaked,
                 "Total staked is wrong"
             );
@@ -96,7 +102,7 @@ contract DepositTest is Test {
             assertEq(
                 _amountStakedFirst +
                     _amountStakedSecond +
-                    uint256(_rewardAmount),
+                    uint256(_debtAmount),
                 pool.totalStaked,
                 "Total staked is wrong"
             );
@@ -115,8 +121,8 @@ contract DepositTest is Test {
         );
     }
 
-    function testFuzz_balancesAfterDepositPositiveReward(
-        int256 _rewardAmount,
+    function testFuzz_balancesAfterDepositPositiveDebt(
+        int256 _debtAmount,
         uint256 _amountStakedFirst,
         uint256 _amountStakedSecond
     ) public {
@@ -124,11 +130,13 @@ contract DepositTest is Test {
         vm.assume(
             _amountStakedFirst > 0 && _amountStakedFirst < 5_000_000_000_000_000
         );
-        vm.assume(_rewardAmount > 0 && _rewardAmount < 2_200_000_000);
+        vm.assume(_debtAmount > 0 && _debtAmount < 2_200_000_000);
         vm.assume(
             _amountStakedSecond > 0 &&
                 _amountStakedSecond < 5_000_000_000_000_000
         );
+
+        uint256 treasuryBalanceBeforeDeposits = bolt.balanceOf(TREASURY);
 
         vm.prank(OWNER);
         bolt.mint(STAKER1, _amountStakedFirst);
@@ -143,7 +151,7 @@ contract DepositTest is Test {
         uint256 balanceStaker2BeforeDeposit = bolt.balanceOf(STAKER2);
 
         stakeToken(STAKER1, _amountStakedFirst);
-        oracle.updatePool(pid, _rewardAmount, true);
+        oracle.updatePool(pid, _debtAmount, true);
         stakeToken(STAKER2, _amountStakedSecond);
 
         StakingContract.PoolInfo memory pool = stakingContract.getPool(pid);
@@ -165,14 +173,14 @@ contract DepositTest is Test {
             "Balance STAKER2 wrong after deposit"
         );
         assertEq(
-            bolt.balanceOf(DEVADDR),
-            0,
-            "DEVADDR balance wrong after deposit"
+            bolt.balanceOf(TREASURY),
+            treasuryBalanceBeforeDeposits - uint256(_debtAmount),
+            "TREASURY balance wrong after deposit"
         );
     }
 
-    function testFuzz_balancesAfterDepositNegReward(
-        int256 _rewardAmount,
+    function testFuzz_balancesAfterDepositNegDebt(
+        int256 _debtAmount,
         uint256 _amountStakedFirst,
         uint256 _amountStakedSecond
     ) public {
@@ -180,7 +188,7 @@ contract DepositTest is Test {
             _amountStakedFirst > 0 && _amountStakedFirst < 5_000_000_000_000_000
         );
         vm.assume(
-            _rewardAmount > -int256(_amountStakedFirst) && _rewardAmount < 0
+            _debtAmount > -int256(_amountStakedFirst) && _debtAmount < 0
         );
         vm.assume(
             _amountStakedSecond > 0 &&
@@ -196,19 +204,21 @@ contract DepositTest is Test {
         stakingContract.createPool(GAME, CHALLENGE, USER_ID);
         oracle.updatePool(pid, 0, true);
 
+        uint256 treasuryBalanceBeforeDeposits = bolt.balanceOf(TREASURY);
+
         uint256 balanceStaker1BeforeDeposit = bolt.balanceOf(STAKER1);
         uint256 balanceStaker2BeforeDeposit = bolt.balanceOf(STAKER2);
-        uint256 balanceDevBeforeDeposits = bolt.balanceOf(DEVADDR);
+        uint256 balanceDevBeforeDeposits = bolt.balanceOf(TREASURY);
 
         stakeToken(STAKER1, _amountStakedFirst);
-        oracle.updatePool(pid, _rewardAmount, true);
+        oracle.updatePool(pid, _debtAmount, true);
         stakeToken(STAKER2, _amountStakedSecond);
 
         StakingContract.PoolInfo memory pool = stakingContract.getPool(pid);
 
         // check
         assertEq(
-            bolt.balanceOf(address(stakingContract)) - uint256(-_rewardAmount),
+            bolt.balanceOf(address(stakingContract)),
             pool.totalStaked,
             "Balance of staking contract wrong"
         );
@@ -224,9 +234,9 @@ contract DepositTest is Test {
         );
 
         assertEq(
-            bolt.balanceOf(DEVADDR),
-            uint256(-_rewardAmount),
-            "DEVADDR balance wrong after deposit with neg reward"
+            bolt.balanceOf(TREASURY),
+            treasuryBalanceBeforeDeposits + uint256(-_debtAmount),
+            "TREASURY balance wrong after deposit with neg debt"
         );
     }
 
@@ -236,7 +246,7 @@ contract DepositTest is Test {
     }
 
     function testFail_CreateMoreTokensThanPossible() public {
-        bolt = new Bolt(OWNER, SIGNER);
+        bolt = new EBolt(OWNER, SIGNER, TREASURY);
         bolt.mint(OWNER, 1e40);
     }
     /*//////////////////////////////////////////////////////////////

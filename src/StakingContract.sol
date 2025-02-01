@@ -5,43 +5,47 @@ pragma solidity ^0.8.22;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {EStormOracle} from "./EStormOracle.sol";
-import {Bolt} from "./Bolt.sol";
+import {EBolt} from "./EBolt.sol";
 import {console} from "forge-std/console.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IStakingContract} from "./interfaces/IStakingContract.sol";
 
-contract StakingContract is IStakingContract, Pausable, Ownable {
+contract StakingContract is IStakingContract, Ownable {
     using Math for uint256;
+
     
-    struct PoolInfo {
-        bytes32 id;
-        string userID;
-        uint256 totalStaked;
-        uint256 totalShares;
-    }
 
     mapping(bytes32 => PoolInfo) public poolInfo; // the key is obtained by concatenating the _gameID, _challengeID and the _userID
     mapping(string => bool) public gamesRegistered;
     mapping(string => bool) public usersRegistered;
     mapping(bytes32 => mapping(address => uint256)) public sharesByAddress;
 
-    uint8 public feePerc = 2;
+    uint16 public feePerc = 2;
 
-    address public devaddr;
+    address public treasury;
     EStormOracle public oracle;
-    Bolt public immutable bolt;
+    EBolt public immutable eBolt;
 
     constructor(
-        Bolt _bolt,
+        EBolt _bolt,
         EStormOracle _oracle,
-        address _devaddr
+        address _treasury
     ) Ownable(_msgSender()) {
-        bolt = _bolt;
+        eBolt = _bolt;
         oracle = _oracle;
-        devaddr = _devaddr;
+        treasury = _treasury;
     }
 
+    /*
+     * @dev Creates a new pool by generating a pid.
+     *
+     * Emits a {PoolCreated} event.
+     *
+     * Requirements:
+     *
+     * - the caller must be the owner
+     */
     function createPool(
         string memory _gameID,
         string memory _challengeID,
@@ -64,16 +68,29 @@ contract StakingContract is IStakingContract, Pausable, Ownable {
         emit PoolCreated(_gameID, _challengeID, _userID, pid);
     }
 
+    /*
+     * @dev Deposits eBolts in the pool.
+     *
+     * Whenever is called, the value returned by the oracle is added to {totalStaked}
+     * before assigning new shares.
+     *
+     * Emits a {Deposit} event.
+     *
+     * Requirements:
+     *
+     * - the amount cannot be zero
+     * - the oracle must be active
+     */
     function deposit(uint256 _amount, bytes32 _pid) external {
         require(_amount > 0, "Amount cannot be zero");
 
-        (bool isActive, int256 dept, bool shouldUpdateDept) = oracle.getPool(
+        (bool isActive, int256 debt, bool shouldUpdateDept) = oracle.getPool(
             _pid
         );
         require(isActive, "Pool not active");
 
         uint256 shares = previewDeposit(_amount, _pid);
-        if (shouldUpdateDept) updateDept(dept, _pid);
+        if (shouldUpdateDept) updateDept(debt, _pid);
 
         PoolInfo storage pool = poolInfo[_pid];
         pool.totalStaked += _amount;
@@ -81,24 +98,34 @@ contract StakingContract is IStakingContract, Pausable, Ownable {
         sharesByAddress[_pid][_msgSender()] += shares;
 
         // slither-disable-next-line reentrancy-no-eth
-        SafeERC20.safeTransferFrom(bolt, _msgSender(), address(this), _amount);
+        SafeERC20.safeTransferFrom(eBolt, _msgSender(), address(this), _amount);
         emit Deposit(_msgSender(), _amount, _pid);
     }
 
-    function withdraw(bytes32 _pid, uint256 _amount) public {
+    /*
+     * @dev Withdraws eBolts from the pool.
+     *
+     * Whenever is called, the value returned by the oracle is added to {totalStaked}
+     * before withdrawing funds.
+     *
+     * A fee in eBolts is applied to the amount and sent to {devaddr}
+     *
+     * Emits a {Withdraw} event.
+     *
+     * Requirements:
+     *
+     * - the amount cannot be zero
+     * - (the oracle must be active to withdraw)
+     * - (the amount cannot be greater than the funds owned by the caller)
+     */
+    function withdraw(bytes32 _pid, uint256 _amount) external {
         require(_amount > 0, "Amount not value");
-        (bool isActive, int256 deptAmount, bool shouldUpdateDept) = oracle
-            .getPool(_pid);
-        require(isActive, "Pool not active");
+        (, int256 debtAmount, bool shouldUpdateDept) = oracle.getPool(_pid);
 
         uint256 shares = _previewWithdraw(_amount, _pid);
         uint256 fee = previewFee(_amount);
-        require(
-            shares <= sharesByAddress[_pid][_msgSender()],
-            "Shares amount not valid"
-        );
-        //todo: comment
-        if (shouldUpdateDept) updateDept(deptAmount, _pid);
+        
+        if (shouldUpdateDept) updateDept(debtAmount, _pid);
 
         PoolInfo storage pool = poolInfo[_pid];
         pool.totalStaked -= _amount;
@@ -106,32 +133,55 @@ contract StakingContract is IStakingContract, Pausable, Ownable {
         sharesByAddress[_pid][_msgSender()] -= shares;
         _amount -= fee;
 
-        SafeERC20.safeTransfer(bolt, devaddr, fee);
-        SafeERC20.safeTransfer(bolt, _msgSender(), _amount);
+        SafeERC20.safeTransfer(eBolt, treasury, fee);
+        SafeERC20.safeTransfer(eBolt, _msgSender(), _amount);
 
         emit Withdraw(_msgSender(), _amount, fee, _pid);
     }
 
+    /*
+     * @dev See {_convertToShares}.
+     */
     function convertToAssets(
         uint256 _shares,
         bytes32 _pid
     ) public view returns (uint256) {
-        (, int256 deptAmount, ) = oracle.getPool(_pid);
+        return _convertToAssets(_shares, _pid);
+    }
+
+    /*
+     * @dev Returns the funds that correspond to a given amount of shares in a pool if
+     * the value returned by the oracle would be added to {totalStaked}.
+     *
+     * funds = shares * ({totalStaked} + 1) / ({totalShares} + 10 ** {eBolt-decimals})
+     *
+     * Uses {Math-mulDiv} for the formula.
+     *
+     * NOTE: {totalStaked} is not actually updated.
+     */
+    function _convertToAssets(
+        uint256 _shares,
+        bytes32 _pid
+    ) private view returns (uint256) {
+        (, int256 debtAmount, ) = oracle.getPool(_pid);
 
         PoolInfo memory pool = poolInfo[_pid];
         uint256 tokens = pool.totalStaked;
 
-        if (deptAmount < 0) tokens -= uint256(-deptAmount);
-        else tokens += uint256(deptAmount);
+        if (debtAmount < 0) tokens -= uint256(-debtAmount);
+        else tokens += uint256(debtAmount);
 
         return
             _shares.mulDiv(
                 tokens + 1,
-                pool.totalShares + 10 ** bolt.decimals(),
+                pool.totalShares + 10 ** eBolt.decimals(),
                 Math.Rounding.Ceil
             );
     }
 
+    /*
+     * @dev See {_convertToShares}.
+     */
     function convertToShares(
         uint256 _amount,
         bytes32 _pid,
@@ -140,27 +190,40 @@ contract StakingContract is IStakingContract, Pausable, Ownable {
         return _convertToShares(_amount, _pid, _rounding);
     }
 
+    /*
+     * @dev Returns the shares that correspond to a given amount of funds in a pool if
+     * the value returned by the oracle would be added to {totalStaked}.
+     *
+     * shares = funds * ({totalShares} + 10 ** {eBolt-decimals}) / ({totalStaked} + 1)
+     *
+     * Uses {Math-mulDiv} for the formula.
+     *
+     * NOTE: {totalStaked} is not actually updated.
+     */
     function _convertToShares(
         uint256 _amount,
         bytes32 _pid,
         Math.Rounding _rounding
     ) private view returns (uint256) {
-        (, int256 deptAmount, ) = oracle.getPool(_pid);
+        (, int256 debtAmount, ) = oracle.getPool(_pid);
 
         PoolInfo memory pool = poolInfo[_pid];
         uint256 tokens = pool.totalStaked;
 
-        if (deptAmount < 0) tokens -= uint256(-deptAmount);
-        else tokens += uint256(deptAmount);
+        if (debtAmount < 0) tokens -= uint256(-debtAmount);
+        else tokens += uint256(debtAmount);
 
         return
             _amount.mulDiv(
-                pool.totalShares + 10 ** bolt.decimals(),
+                pool.totalShares + 10 ** eBolt.decimals(),
                 tokens + 1,
                 _rounding
             );
     }
 
+    /*
+     * @dev See {_previewWithdraw}.
+     */
     function previewWithdraw(
         uint256 _amount,
         bytes32 _pid
@@ -168,6 +231,12 @@ contract StakingContract is IStakingContract, Pausable, Ownable {
         return _previewWithdraw(_amount, _pid);
     }
 
+    /*
+     * @dev Returns the same value as {_convertToShares} but if it is greater than
+     * the total shares owned by the caller in the pool it is set to this value instead.
+     *
+     * It helps to avoid rounding errors while withdrawing all the funds.
+     */
     function _previewWithdraw(
         uint256 _amount,
         bytes32 _pid
@@ -180,20 +249,19 @@ contract StakingContract is IStakingContract, Pausable, Ownable {
         return shares;
     }
 
-    //TODO: add the check on the total supply if _deptAmount is positive
-    function updateDept(int256 _deptAmount, bytes32 _pid) private {
+    function updateDept(int256 _debtAmount, bytes32 _pid) private {
         PoolInfo storage pool = poolInfo[_pid];
-        if (_deptAmount > 0) {
-            pool.totalStaked += uint256(_deptAmount);
-            safeEBoltTransfer(address(this), uint256(_deptAmount));
-        } else if (_deptAmount < 0) {
-            uint256 absdeptAmount = uint256(-_deptAmount);
+        if (_debtAmount > 0) {
+            pool.totalStaked += uint256(_debtAmount);
+            SafeERC20.safeTransferFrom(eBolt, treasury, address(this), uint256(_debtAmount));
+        } else if (_debtAmount < 0) {
+            uint256 absdebtAmount = uint256(-_debtAmount);
             require(
-                pool.totalStaked >= absdeptAmount,
+                pool.totalStaked >= absdebtAmount,
                 "Dept amount value not valid"
             );
-            pool.totalStaked -= absdeptAmount;
-            safeEBoltTransfer(devaddr, absdeptAmount);
+            pool.totalStaked -= absdebtAmount;
+            SafeERC20.safeTransfer(eBolt, treasury, absdebtAmount);
         }
         oracle.lockPool(_pid);
     }
@@ -210,7 +278,7 @@ contract StakingContract is IStakingContract, Pausable, Ownable {
     }
 
     function safeEBoltTransfer(address _to, uint256 _amount) internal {
-        bolt.safeEBoltTransfer(_to, _amount);
+        eBolt.safeEBoltTransfer(_to, _amount);
     }
 
     function getPool(bytes32 _pid) public view returns (PoolInfo memory) {
@@ -225,19 +293,11 @@ contract StakingContract is IStakingContract, Pausable, Ownable {
         oracle = _oracle;
     }
 
-    function setDevAddress(address _addr) external onlyOwner {
-        devaddr = _addr;
-    }
-
     function setDevFee(uint8 _newFee) external onlyOwner {
         feePerc = _newFee;
     }
 
-    function pause() public onlyOwner {
-        _pause();
-    }
-
-    function unpause() public onlyOwner {
-        _unpause();
+    function setTreasury(address _treasury) external onlyOwner {
+        treasury = _treasury;
     }
 }

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
-import {Bolt} from "../../src/Bolt.sol";
+import {EBolt} from "../../src/EBolt.sol";
 import {StakingContract} from "../../src/StakingContract.sol";
 import {EStormOracle} from "../../src/EStormOracle.sol";
 import {console} from "forge-std/console.sol";
@@ -20,7 +20,7 @@ contract DepositRevertsTest is Test {
     address constant SIGNER = 0x14dC79964da2C08b23698B3D3cc7Ca32193d9955;
 
     // Test Variables
-    Bolt internal bolt;
+    EBolt internal bolt;
     StakingContract internal stakingContract;
     EStormOracle internal oracle;
 
@@ -28,7 +28,7 @@ contract DepositRevertsTest is Test {
 
     /// @notice Set up shared state for all tests
     function setUp() public {
-        bolt = new Bolt(OWNER, SIGNER);
+        bolt = new EBolt(OWNER, SIGNER, DEVADDR);
         oracle = new EStormOracle();
         pid = keccak256(abi.encode(GAME, CHALLENGE, USER_ID));
         stakingContract = new StakingContract(bolt, oracle, DEVADDR);
@@ -36,6 +36,9 @@ contract DepositRevertsTest is Test {
         vm.prank(OWNER);
         bolt.setStakingContract(address(stakingContract));
         oracle.setStakingContract(address(stakingContract));
+
+        vm.prank(DEVADDR);
+        bolt.approve(address(stakingContract), type(uint256).max);
     }
 
     function testFail_theStakerDoesNotHaveSpecifiedAmountInBalance() public {

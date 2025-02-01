@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
-import {Bolt} from "../src/Bolt.sol";
+import {EBolt} from "../src/EBolt.sol";
 import {StakingContract} from "../src/StakingContract.sol";
 import {EStormOracle} from "../src/EStormOracle.sol";
 import {console} from "forge-std/console.sol";
@@ -16,11 +16,11 @@ contract WithdrawTest is Test {
     address constant STAKER1 = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
     address constant STAKER2 = 0x976EA74026E726554dB657fA54763abd0C3a0aa9;
     address constant STAKER3 = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
-    address constant DEVADDR = 0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc;
+    address constant TREASURY = 0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc;
     address constant SIGNER = 0x14dC79964da2C08b23698B3D3cc7Ca32193d9955;
 
     // Test Variables
-    Bolt internal bolt;
+    EBolt internal bolt;
     StakingContract internal stakingContract;
     EStormOracle internal oracle;
 
@@ -28,18 +28,21 @@ contract WithdrawTest is Test {
 
     /// @notice Set up shared state for all tests
     function setUp() public {
-        bolt = new Bolt(OWNER, SIGNER);
+        bolt = new EBolt(OWNER, SIGNER, TREASURY);
         oracle = new EStormOracle();
         pid = keccak256(abi.encode(GAME, CHALLENGE, USER_ID));
-        stakingContract = new StakingContract(bolt, oracle, DEVADDR);
+        stakingContract = new StakingContract(bolt, oracle, TREASURY);
         stakingContract.addGame(GAME);
         vm.prank(OWNER);
         bolt.setStakingContract(address(stakingContract));
         oracle.setStakingContract(address(stakingContract));
+
+        vm.prank(TREASURY);
+        bolt.approve(address(stakingContract), type(uint256).max);
     }
 
     function testFuzz_withdrawIsCorrect(
-        int256 _rewardFromOracle,
+        int256 _debtFromOracle,
         uint256 _amountStaker1,
         uint256 _amountStaker2,
         uint256 _amountStaker3
@@ -50,16 +53,16 @@ contract WithdrawTest is Test {
         vm.assume(_amountStaker2 > 0 && _amountStaker2 < 5_000_000_000_000_000);
         vm.assume(_amountStaker3 > 0 && _amountStaker3 < 5_000_000_000_000_000);
         vm.assume(
-            _rewardFromOracle >
+            _debtFromOracle >
                 -int256(_amountStaker1 + _amountStaker2 + _amountStaker3) &&
-                _rewardFromOracle < 2_200_000_000
+                _debtFromOracle < 2_200_000_000
         );
 
         mint(STAKER1, _amountStaker1);
         mint(STAKER2, _amountStaker2);
         mint(STAKER3, _amountStaker3);
 
-        vm.assume(_rewardFromOracle > 0);
+        vm.assume(_debtFromOracle > 0);
         stakingContract.createPool(GAME, CHALLENGE, USER_ID);
         oracle.updatePool(pid, 0, true);
 
@@ -73,7 +76,7 @@ contract WithdrawTest is Test {
             "Total staked is not updated correctly"
         );
 
-        oracle.updatePool(pid, _rewardFromOracle, true);
+        oracle.updatePool(pid, _debtFromOracle, true);
 
         uint256 totalStakedByStaker1 = stakingContract.convertToAssets(
             stakingContract.sharesByAddress(pid, STAKER1),
@@ -123,8 +126,8 @@ contract WithdrawTest is Test {
         );
     }
 
-    function testFuzz_balancesAreCorrectAfterWithdrawWithPositiveReward(
-        int256 _rewardFromOracle,
+    function testFuzz_balancesAreCorrectAfterWithdrawWithPositiveDebt(
+        int256 _debtFromOracle,
         uint256 _amountStaker1,
         uint256 _amountStaker2,
         uint256 _amountStaker3
@@ -133,9 +136,9 @@ contract WithdrawTest is Test {
         vm.assume(_amountStaker1 > 10);
         vm.assume(_amountStaker2 > 0 && _amountStaker2 < 5_000_000_000_000_000);
         vm.assume(_amountStaker3 > 0 && _amountStaker3 < 5_000_000_000_000_000);
-        vm.assume(_rewardFromOracle > 0 && _rewardFromOracle < 2_200_000_000);
+        vm.assume(_debtFromOracle > 0 && _debtFromOracle < 2_200_000_000);
 
-        uint256 devAddrBalanceBeforeWithdraws = bolt.balanceOf(DEVADDR);
+        uint256 devAddrBalanceBeforeWithdraws = bolt.balanceOf(TREASURY);
 
         mint(STAKER1, _amountStaker1);
         mint(STAKER2, _amountStaker2);
@@ -148,7 +151,7 @@ contract WithdrawTest is Test {
         stakeToken(STAKER2, _amountStaker2);
         stakeToken(STAKER3, _amountStaker3);
 
-        oracle.updatePool(pid, _rewardFromOracle, true);
+        oracle.updatePool(pid, _debtFromOracle, true);
 
         uint256 totalStakedByStaker1 = stakingContract.convertToAssets(
             stakingContract.sharesByAddress(pid, STAKER1),
@@ -204,17 +207,18 @@ contract WithdrawTest is Test {
             "STAKINGCONTRACT balance is wrong"
         );
         assertEq(
-            bolt.balanceOf(DEVADDR),
+            bolt.balanceOf(TREASURY),
             devAddrBalanceBeforeWithdraws +
                 expectedDevFeeStaker1 +
                 expectedDevFeeStaker2 +
-                expectedDevFeeStaker3,
-            "DEVADDR balance is wrong"
+                expectedDevFeeStaker3 -
+                uint256(_debtFromOracle),
+            "TREASURY balance is wrong"
         );
     }
 
-    function testFuzz_balancesAreCorrectAfterWithdrawWithNegativeReward(
-        int256 _rewardFromOracle,
+    function testFuzz_balancesAreCorrectAfterWithdrawWithNegativeDebt(
+        int256 _debtFromOracle,
         uint256 _amountStaker1,
         uint256 _amountStaker2,
         uint256 _amountStaker3
@@ -223,10 +227,10 @@ contract WithdrawTest is Test {
         vm.assume(_amountStaker1 > 10);
         vm.assume(_amountStaker2 > 0 && _amountStaker2 < 5_000_000_000_000_000);
         vm.assume(_amountStaker3 > 0 && _amountStaker3 < 5_000_000_000_000_000);
-        vm.assume(_rewardFromOracle > -int256(_amountStaker1 + _amountStaker2 + _amountStaker3));
-        vm.assume(_rewardFromOracle < 0);
+        vm.assume(_debtFromOracle > -int256(_amountStaker1 + _amountStaker2 + _amountStaker3));
+        vm.assume(_debtFromOracle < 0);
 
-        uint256 devAddrBalanceBeforeWithdraws = bolt.balanceOf(DEVADDR);
+        uint256 devAddrBalanceBeforeWithdraws = bolt.balanceOf(TREASURY);
 
         mint(STAKER1, _amountStaker1);
         mint(STAKER2, _amountStaker2);
@@ -239,7 +243,7 @@ contract WithdrawTest is Test {
         stakeToken(STAKER2, _amountStaker2);
         stakeToken(STAKER3, _amountStaker3);
 
-        oracle.updatePool(pid, _rewardFromOracle, true);
+        oracle.updatePool(pid, _debtFromOracle, true);
 
         uint256 totalStakedByStaker1 = stakingContract.convertToAssets(
             stakingContract.sharesByAddress(pid, STAKER1),
