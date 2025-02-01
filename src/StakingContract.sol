@@ -277,10 +277,6 @@ contract StakingContract is IStakingContract, Ownable {
         return _amount.mulDiv(feePerc, 100, Math.Rounding.Ceil);
     }
 
-    function safeEBoltTransfer(address _to, uint256 _amount) internal {
-        eBolt.safeEBoltTransfer(_to, _amount);
-    }
-
     function getPool(bytes32 _pid) public view returns (PoolInfo memory) {
         return poolInfo[_pid];
     }

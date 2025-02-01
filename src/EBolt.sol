@@ -67,20 +67,6 @@ contract EBolt is
     function decimals() public view virtual override returns (uint8) {
         return 6;
     }
-    function safeEBoltTransfer(address _to, uint256 _amount) public {
-        require(
-            msg.sender == stakingContract,
-            "Only staking contract can call this"
-        );
-
-        uint256 eBoltsBalance = balanceOf(address(this));
-
-        if (_amount > eBoltsBalance) {
-            _transfer(address(this), _to, eBoltsBalance);
-        } else {
-            _transfer(address(this), _to, _amount);
-        }
-    }
 
     function setStakingContract(address _addr) external onlyOwner {
         stakingContract = _addr;
