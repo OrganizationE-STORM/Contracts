@@ -14,14 +14,12 @@ import {IStakingContract} from "./interfaces/IStakingContract.sol";
 contract StakingContract is IStakingContract, Ownable {
     using Math for uint256;
 
-    
-
     mapping(bytes32 => PoolInfo) public poolInfo; // the key is obtained by concatenating the _gameID, _challengeID and the _userID
     mapping(string => bool) public gamesRegistered;
     mapping(string => bool) public usersRegistered;
     mapping(bytes32 => mapping(address => uint256)) public sharesByAddress;
 
-    uint16 public feePerc = 2;
+    uint16 public feePerc = 2000;
 
     address public treasury;
     EStormOracle public oracle;
@@ -82,7 +80,7 @@ contract StakingContract is IStakingContract, Ownable {
      * - the oracle must be active
      */
     function deposit(uint256 _amount, bytes32 _pid) external {
-        require(_amount > 0, "Amount cannot be zero");
+        require(_amount > 1_000_000, "Amount cannot be less than 1M");
 
         (bool isActive, int256 debt, bool shouldUpdateDept) = oracle.getPool(
             _pid
@@ -124,23 +122,27 @@ contract StakingContract is IStakingContract, Ownable {
 
         uint256 shares = _previewWithdraw(_amount, _pid);
         uint256 fee = previewFee(_amount);
-        
+        uint256 assets = convertToAssets(shares, _pid);
+
         if (shouldUpdateDept) updateDept(debtAmount, _pid);
 
         PoolInfo storage pool = poolInfo[_pid];
-        pool.totalStaked -= _amount;
+
+        if (assets > pool.totalStaked) assets = pool.totalStaked;
+
+        pool.totalStaked -= assets;
         pool.totalShares -= shares;
         sharesByAddress[_pid][_msgSender()] -= shares;
-        _amount -= fee;
+        assets -= fee;
 
         SafeERC20.safeTransfer(eBolt, treasury, fee);
-        SafeERC20.safeTransfer(eBolt, _msgSender(), _amount);
+        SafeERC20.safeTransfer(eBolt, _msgSender(), assets);
 
-        emit Withdraw(_msgSender(), _amount, fee, _pid);
+        emit Withdraw(_msgSender(), assets, fee, _pid);
     }
 
     /*
-     * @dev See {_convertToShares}.
+     * @dev See {_convertToAssets}.
      */
     function convertToAssets(
         uint256 _shares,
@@ -243,8 +245,10 @@ contract StakingContract is IStakingContract, Ownable {
     ) private view returns (uint256) {
         uint256 shares = _convertToShares(_amount, _pid, Math.Rounding.Ceil);
 
-        if (shares > sharesByAddress[_pid][_msgSender()])
+        if (shares > sharesByAddress[_pid][_msgSender()]) {
+            console.log("Triggered");
             shares = sharesByAddress[_pid][_msgSender()];
+        }
 
         return shares;
     }
@@ -253,7 +257,12 @@ contract StakingContract is IStakingContract, Ownable {
         PoolInfo storage pool = poolInfo[_pid];
         if (_debtAmount > 0) {
             pool.totalStaked += uint256(_debtAmount);
-            SafeERC20.safeTransferFrom(eBolt, treasury, address(this), uint256(_debtAmount));
+            SafeERC20.safeTransferFrom(
+                eBolt,
+                treasury,
+                address(this),
+                uint256(_debtAmount)
+            );
         } else if (_debtAmount < 0) {
             uint256 absdebtAmount = uint256(-_debtAmount);
             require(
@@ -274,7 +283,7 @@ contract StakingContract is IStakingContract, Ownable {
     }
 
     function previewFee(uint256 _amount) public view returns (uint256) {
-        return _amount.mulDiv(feePerc, 100, Math.Rounding.Ceil);
+        return _amount.mulDiv(feePerc, 100_000, Math.Rounding.Ceil);
     }
 
     function getPool(bytes32 _pid) public view returns (PoolInfo memory) {
@@ -289,7 +298,7 @@ contract StakingContract is IStakingContract, Ownable {
         oracle = _oracle;
     }
 
-    function setDevFee(uint8 _newFee) external onlyOwner {
+    function setDevFee(uint16 _newFee) external onlyOwner {
         feePerc = _newFee;
     }
 

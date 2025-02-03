@@ -64,14 +64,14 @@ contract DepositTest is Test {
     ) public {
         //build
         vm.assume(
-            _amountStakedFirst > 0 && _amountStakedFirst < 5_000_000_000_000_000
+            _amountStakedFirst > 1_000_000 && _amountStakedFirst < 5_000_000_000_000_000
         );
         vm.assume(
             _debtAmount > -int256(_amountStakedFirst) &&
                 _debtAmount < 2_200_000_000
         );
         vm.assume(
-            _amountStakedSecond > 0 &&
+            _amountStakedSecond > 1_000_000 &&
                 _amountStakedSecond < 5_000_000_000_000_000
         );
 
@@ -128,11 +128,11 @@ contract DepositTest is Test {
     ) public {
         // build
         vm.assume(
-            _amountStakedFirst > 0 && _amountStakedFirst < 5_000_000_000_000_000
+            _amountStakedFirst > 1_000_000 && _amountStakedFirst < 5_000_000_000_000_000
         );
         vm.assume(_debtAmount > 0 && _debtAmount < 2_200_000_000);
         vm.assume(
-            _amountStakedSecond > 0 &&
+            _amountStakedSecond > 1_000_000 &&
                 _amountStakedSecond < 5_000_000_000_000_000
         );
 
@@ -185,13 +185,13 @@ contract DepositTest is Test {
         uint256 _amountStakedSecond
     ) public {
         vm.assume(
-            _amountStakedFirst > 0 && _amountStakedFirst < 5_000_000_000_000_000
+            _amountStakedFirst > 1_000_000 && _amountStakedFirst < 5_000_000_000_000_000
         );
         vm.assume(
             _debtAmount > -int256(_amountStakedFirst) && _debtAmount < 0
         );
         vm.assume(
-            _amountStakedSecond > 0 &&
+            _amountStakedSecond > 1_000_000 &&
                 _amountStakedSecond < 5_000_000_000_000_000
         );
 

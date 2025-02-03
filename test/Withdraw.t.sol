@@ -48,10 +48,10 @@ contract WithdrawTest is Test {
         uint256 _amountStaker3
     ) public {
         vm.assume(
-            _amountStaker1 > 10 && _amountStaker1 < 5_000_000_000_000_000
+            _amountStaker1 > 1_000_000 && _amountStaker1 < 5_000_000_000_000_000
         );
-        vm.assume(_amountStaker2 > 0 && _amountStaker2 < 5_000_000_000_000_000);
-        vm.assume(_amountStaker3 > 0 && _amountStaker3 < 5_000_000_000_000_000);
+        vm.assume(_amountStaker2 > 1_000_000 && _amountStaker2 < 5_000_000_000_000_000);
+        vm.assume(_amountStaker3 > 1_000_000 && _amountStaker3 < 5_000_000_000_000_000);
         vm.assume(
             _debtFromOracle >
                 -int256(_amountStaker1 + _amountStaker2 + _amountStaker3) &&
@@ -133,9 +133,9 @@ contract WithdrawTest is Test {
         uint256 _amountStaker3
     ) public {
         vm.assume(_amountStaker1 < 5_000_000_000_000_000);
-        vm.assume(_amountStaker1 > 10);
-        vm.assume(_amountStaker2 > 0 && _amountStaker2 < 5_000_000_000_000_000);
-        vm.assume(_amountStaker3 > 0 && _amountStaker3 < 5_000_000_000_000_000);
+        vm.assume(_amountStaker1 > 1_000_000);
+        vm.assume(_amountStaker2 > 1_000_000 && _amountStaker2 < 5_000_000_000_000_000);
+        vm.assume(_amountStaker3 > 1_000_000 && _amountStaker3 < 5_000_000_000_000_000);
         vm.assume(_debtFromOracle > 0 && _debtFromOracle < 2_200_000_000);
 
         uint256 devAddrBalanceBeforeWithdraws = bolt.balanceOf(TREASURY);
@@ -224,9 +224,9 @@ contract WithdrawTest is Test {
         uint256 _amountStaker3
     ) public {
         vm.assume(_amountStaker1 < 5_000_000_000_000_000);
-        vm.assume(_amountStaker1 > 10);
-        vm.assume(_amountStaker2 > 0 && _amountStaker2 < 5_000_000_000_000_000);
-        vm.assume(_amountStaker3 > 0 && _amountStaker3 < 5_000_000_000_000_000);
+        vm.assume(_amountStaker1 > 1_000_000);
+        vm.assume(_amountStaker2 > 1_000_000 && _amountStaker2 < 5_000_000_000_000_000);
+        vm.assume(_amountStaker3 > 1_000_000 && _amountStaker3 < 5_000_000_000_000_000);
         vm.assume(_debtFromOracle > -int256(_amountStaker1 + _amountStaker2 + _amountStaker3));
         vm.assume(_debtFromOracle < 0);
 
@@ -240,8 +240,11 @@ contract WithdrawTest is Test {
         oracle.updatePool(pid, 0, true);
 
         stakeToken(STAKER1, _amountStaker1);
+        console.log(stakingContract.sharesByAddress(pid, STAKER1));
         stakeToken(STAKER2, _amountStaker2);
+        console.log(stakingContract.sharesByAddress(pid, STAKER2));
         stakeToken(STAKER3, _amountStaker3);
+        console.log(stakingContract.sharesByAddress(pid, STAKER3));
 
         oracle.updatePool(pid, _debtFromOracle, true);
 
@@ -281,12 +284,12 @@ contract WithdrawTest is Test {
         assertEq(
             bolt.balanceOf(STAKER1),
             totalStakedByStaker1 - expectedDevFeeStaker1,
-            "STAKER1 address is wrong"
+            "STAKER1 balance is wrong"
         );
         assertEq(
             bolt.balanceOf(STAKER2),
             totalStakedByStaker2 - expectedDevFeeStaker2,
-            "STAKER2 address is wrong"
+            "STAKER2 balance is wrong"
         );
         // assertEq(
         //     bolt.balanceOf(STAKER3),
