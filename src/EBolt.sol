@@ -11,6 +11,20 @@ import {ERC20Capped} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20C
 import {console} from "forge-std/console.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {IEBolt} from "./interfaces/IEBolt.sol";
+
+/**
+ * @dev Implementation of the {IERC20} interface.
+ *
+ * This implementation differs from a traditional ERC20 for the mint function which
+ * requires approval from the owner to be called. Such process guarantees that each
+ * eBolt minted corresponds to a gem redeemed from the eStorm Client. The maximum
+ * amount of eBolts mintable by a user will always be equal to the gems owned by
+ * that user on the eStorm Client.
+ *
+ * This implementation is also connected to a {StakingContract} that allows users
+ * to sponsor gamers on the eStorm Client to share costs and rewards of the challenges.
+ *
+ */
 contract EBolt is
     ERC20,
     ERC20Burnable,

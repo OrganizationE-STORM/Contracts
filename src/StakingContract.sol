@@ -267,7 +267,7 @@ contract StakingContract is IStakingContract, Ownable {
             uint256 absdebtAmount = uint256(-_debtAmount);
             require(
                 pool.totalStaked >= absdebtAmount,
-                "Dept amount value not valid"
+                "debt amount value not valid"
             );
             pool.totalStaked -= absdebtAmount;
             SafeERC20.safeTransfer(eBolt, treasury, absdebtAmount);
